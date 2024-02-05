@@ -1,0 +1,13 @@
+# Print absolute path
+absolute_path ()
+{
+    local _path="$1"
+    local _cwd="$(pwd)"
+
+    test -n "${_path}" || return 1
+    case "${_path}" in
+	( /* ) ;;
+	(  * ) _path="${_cwd%/}/${_path}" ;;
+    esac
+    printf "%s" "${_path}"
+}
