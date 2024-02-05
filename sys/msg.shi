@@ -1,5 +1,5 @@
 # Print error message
 err ()
 {
-    echo "${PROG}: error: $@" >&2
+    printf "%s: error: %s\n" "${PROG}" "$*" >&2
 }
