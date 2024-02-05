@@ -1,0 +1,22 @@
+decode_cmd=""
+
+# Decode methods
+
+decode_uudecode ()
+{
+    {
+	echo "begin-base64 644 /dev/stdout"
+	cat
+	echo "===="
+    } | cmd uudecode -o "$1"
+}
+
+decode_base64 ()
+{
+    cmd base64 -d > "$1"
+}
+
+decode_openssl ()
+{
+    cmd openssl enc -d -a -out "$1"
+}

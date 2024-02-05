@@ -1,0 +1,18 @@
+encode_cmd=""
+
+# Encode methods
+
+encode_uuencode ()
+{
+    cmd uuencode -m /dev/stdout | cmd sed -e '1d;$d' > "$1"
+}
+
+encode_base64 ()
+{
+    cmd base64 > "$1"
+}
+
+encode_openssl ()
+{
+    cmd openssl enc -a -out "$1"
+}

@@ -1,0 +1,10 @@
+# Print first found command in the list
+find_command ()
+{
+    local _cmd=""
+
+    for _cmd in "$@" ; do
+	command -v "${_cmd}" >/dev/null 2>&1 && { echo "${_cmd}" ; return ; } || continue
+    done
+    echo ""
+}

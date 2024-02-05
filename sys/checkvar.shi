@@ -1,0 +1,12 @@
+# Check for empty variable
+check_var ()
+{
+    local _var="$1"
+
+    test -n "${_var}" || return 1
+    eval test -n \"\${${_var}}\"
+    if test $? -ne 0 ; then
+	err "'${_var}' is not set"
+	return 1
+    fi
+}

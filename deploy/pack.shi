@@ -1,0 +1,16 @@
+pack_cmd=""
+
+# Pack methods
+
+pack_pax ()
+{
+    (
+	cd "${SRCDIR}"
+	cmd pax -w -x ustar -f "$1" ${FILELIST} ${INITFILE}
+    )
+}
+
+pack_tar ()
+{
+    cmd tar -c -f "$1" -C "${SRCDIR}" ${FILELIST} ${INITFILE}
+}

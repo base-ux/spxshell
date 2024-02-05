@@ -1,0 +1,13 @@
+chksum_cmd=""
+
+# Checksum methods
+
+chksum_md5sum ()
+{
+    cmd md5sum "$1"
+}
+
+chksum_openssl ()
+{
+    cmd openssl md5 -r "$1"
+}

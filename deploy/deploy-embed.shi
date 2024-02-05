@@ -1,0 +1,188 @@
+###
+### Embedded deploy.sh script ###
+###
+
+embed ()
+{
+    cat << 'BEGIN' ; cat << PARAMS ; cat << 'MAIN' ; cat << BLOB ; cat << 'END'
+#%shebang
+
+BEGIN
+### Deploy parameters
+
+PRODUCT="${PRODUCT}"
+VERSION="${VERSION}"
+
+INITFILE="${INITFILE}"
+MD5SUM="${MD5SUM}"
+
+PARAMS
+#%prolog
+
+#%include sys/msg.shi
+#%include sys/cmd.shi
+#%include sys/findcmd.shi
+#%include sys/checkdir.shi
+#%include sys/checklock.shi
+#%include sys/checkvar.shi
+#%include deploy/checksum.shi
+#%include deploy/decode.shi
+#%include deploy/unpack.shi
+
+# Set variables
+: ${XDG_CACHE_HOME:="${HOME}/.cache"}
+
+BASEDIR="${XDG_CACHE_HOME}/spxshell/deploy"
+DEPLOYDIR="${BASEDIR}/${MD5SUM:-none}"
+LOCKFILE="${DEPLOYDIR}/deploy.lock"
+
+EDIR="${DEPLOYDIR}/e"
+XDIR="${DEPLOYDIR}/x"
+
+ARCHFILE="${EDIR}/archive.pax"
+INITFILE="${XDIR}/${INITFILE}"
+
+###
+
+# Initialization subroutine
+startup ()
+{
+    local _umask=""
+
+    # Check binaries
+    # Extract
+    decode_cmd="$(find_command uudecode base64 openssl)"
+    if test -z "${decode_cmd}" ; then
+	err "can't find extract binary"
+	return 1
+    fi
+    # Unpack
+    unpack_cmd="$(find_command pax tar)"
+    if test -z "${unpack_cmd}" ; then
+	err "can't find unpack binary"
+	return 1
+    fi
+    # MD5 (if there is no MD5 binary then do not check MD5 sum)
+    test -n "${MD5SUM}" && chksum_cmd="$(find_command md5sum openssl)"
+
+    # Check directories
+    {
+	_umask="$(umask)"	# Save umask value
+	umask 0077		# Create only user accessible directories
+	check_dir "${DEPLOYDIR}" &&
+	check_dir "${EDIR}"      &&
+	check_dir "${XDIR}"      &&
+	umask "${_umask}"	# Restore umask
+    } || return 1
+
+    # Check lock file
+    check_lock "${LOCKFILE}"  || return 1
+}
+
+# Extract archive from embedded blob
+extract ()
+{
+    local _md5=""
+
+    if ! blob | decode_${decode_cmd} "${ARCHFILE}" ; then
+	err "can't extract file '${ARCHFILE}'"
+	return 1
+    fi
+    if test -n "${chksum_cmd}" ; then
+	_md5="$(chksum_${chksum_cmd} "${ARCHFILE}")"
+	_md5="${_md5%%[[:space:]]*}"
+	if test "${MD5SUM}" != "${_md5}" ; then
+	    err "incorrect checksum for file '${ARCHFILE}'"
+	    return 1
+	fi
+    fi
+}
+
+# Unpack archive
+unpack ()
+{
+    if ! unpack_${unpack_cmd} "${ARCHFILE}" ; then
+	err "can't unpack file '${ARCHFILE}'"
+	return 1
+    fi
+}
+
+# Execute defined init file
+execinit ()
+{
+    if ! test -f "${INITFILE}" ; then
+	err "execution program '${INITFILE}' is not found"
+	return 1
+    elif test -x "${INITFILE}" ; then
+	"${INITFILE}"
+    else
+	command -p sh "${INITFILE}"
+    fi
+}
+
+# Save version information
+bumpver ()
+{
+    if test -n "${PRODUCT}" && test -n "${VERSION}" ; then
+	cmd echo "${VERSION}" > "${BASEDIR}/${PRODUCT}"
+    fi
+}
+
+# Clean deployment directory
+cleanup ()
+{
+    if test -n "${DEPLOYDIR}" ; then
+	test -n "$trapped" && trap - HUP INT TERM
+	cmd find "${DEPLOYDIR}" -depth ! -type d -exec rm -f {} \+
+	cmd find "${DEPLOYDIR}" -depth -type d -exec rmdir {} \+
+    fi
+}
+
+# Exit with error code
+fail ()
+{
+    exit 1
+}
+
+# Clean up the staff and exit with error
+clean_fail ()
+{
+    cleanup
+    fail
+}
+
+# Main subroutine
+main ()
+{
+    trap 'trapped=true cleanup; exit 130' HUP INT TERM
+    startup || fail
+    {
+	extract  &&
+	unpack   &&
+	execinit &&
+	bumpver
+    } || clean_fail
+    cleanup
+}
+
+## Embedded blob ##
+
+blob ()
+{
+    cat << EOF
+MAIN
+$(cat "${W_BLOB}")
+BLOB
+EOF
+}
+
+## End of embedded blob ##
+
+# Call main subroutine
+main "$@"
+END
+}
+
+###
+### End of embedded script ###
+###

@@ -1,0 +1,5 @@
+# Print error message
+err ()
+{
+    echo "${PROG}: error: $@" >&2
+}

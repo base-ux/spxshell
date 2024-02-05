@@ -1,0 +1,18 @@
+# Check for lock file existance or create it
+check_lock ()
+{
+    local _lock="$1"
+
+    test -n "${_lock}" || return 1
+    if test -f "${_lock}" ; then
+	err "lock file '${_lock}' found. Another process running?"
+	return 1
+    else
+	# Try to create lock file
+	cmd touch "${_lock}"
+	if test $? -ne 0 ; then
+	    err "can't create lock file '${_lock}'"
+	    return 1
+	fi
+    fi
+}

@@ -1,0 +1,5 @@
+# Execute command and discard stderr
+cmd ()
+{
+    command ${1+"$@"} 2>/dev/null
+}

@@ -1,0 +1,23 @@
+# Check directory availability or create it
+check_dir ()
+{
+    local _dir="$1"
+
+    test -n "${_dir}" || return 1
+    if test -e "${_dir}" ; then
+	if ! test -d "${_dir}" ; then
+	    err "'${_dir}' is not directory"
+	    return 1
+	elif ! test -w "${_dir}" ; then
+	    err "directory '${_dir}' is not writable"
+	    return 1
+	fi
+    else
+	# Try to create directory
+	cmd mkdir -p "${_dir}"
+	if test $? -ne 0 ; then
+	    err "can't create directory '${_dir}'"
+	    return 1
+	fi
+    fi
+}
