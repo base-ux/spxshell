@@ -1,0 +1,17 @@
+### Prolog begin
+
+# Unset all aliases
+'unalias' -a
+
+# Ensure 'command' is not a user function
+unset -f command
+
+# Use shell dependent 'local' definition
+local="$(command -v local)"
+test -z "${local}" && local="$(command -v typeset)"
+alias local="${local}"
+
+# Program name
+PROG="$(basename -- "$0")"
+
+### Prolog end

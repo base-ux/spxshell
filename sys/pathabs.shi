@@ -2,12 +2,17 @@
 absolute_path ()
 {
     local _path="$1"
+    local _base="$2"
     local _cwd="$(pwd)"
 
     test -n "${_path}" || return 1
+    case "${_base}" in
+	( /* ) ;;
+	(  * ) _base="${_cwd%/}/${_base}" ;;
+    esac
     case "${_path}" in
 	( /* ) ;;
-	(  * ) _path="${_cwd%/}/${_path}" ;;
+	(  * ) _path="${_base%/}/${_path}" ;;
     esac
     printf "%s" "${_path}"
 }
