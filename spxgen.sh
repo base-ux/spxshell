@@ -31,7 +31,8 @@ EOF
 # Process '#%shebang' directive
 do_shebang ()
 {
-    local _line="$1"
+    local _file="$1"
+    local _line="$2"
 
     case "${_line}" in
 	( *[[:space:]][![:space:]]* )
@@ -45,7 +46,9 @@ do_shebang ()
 # Process '#%prolog' directive
 do_prolog ()
 {
-    local _line="$1"
+    local _file="$1"
+    local _line="$2"
+    local _f=""
 
     case "${_line}" in
 	( *[[:space:]][![:space:]]* )
@@ -53,7 +56,12 @@ do_prolog ()
 	    return 1
 	    ;;
     esac
-    embed_prolog
+    _f="$(absolute_path "sys/prolog" "${_file%/*}")"
+    if test -f "${_f}" ; then
+	process_file "${_f}"
+    else
+	embed_prolog
+    fi
 }
 
 # Embedded prolog code
@@ -83,7 +91,8 @@ EOF
 # Process '#%include' directive
 do_include ()
 {
-    local _line="$1"
+    local _file="$1"
+    local _line="$2"
     local _f=""
 
     set -- ${_line##'#%include'}
@@ -91,23 +100,28 @@ do_include ()
 	err "no parameters set for '#%include' directive"
 	return 1
     fi
-    for _f ; do
-	process_file "${_f}" || return 1
+    for _f in "$@" ; do
+	{
+	    _f="$(absolute_path "${_f}" "${_file%/*}")"	&&
+	    check_file "${_f}"	&&
+	    process_file "${_f}"
+	} || return 1
     done
 }
 
 # Examine directive and call handler
 do_directive ()
 {
-    local _line="$1"
+    local _file="$1"
+    local _line="$2"
 
     case "${_line}" in
 	( '#%shebang' | '#%shebang'[[:space:]]* )
-	    do_shebang "${_line}" || return 1 ;;
+	    do_shebang "${_file}" "${_line}" || return 1 ;;
 	( '#%prolog'  | '#%prolog'[[:space:]]*  )
-	    do_prolog  "${_line}" || return 1 ;;
+	    do_prolog  "${_file}" "${_line}" || return 1 ;;
 	( '#%include' | '#%include'[[:space:]]* )
-	    do_include "${_line}" || return 1 ;;
+	    do_include "${_file}" "${_line}" || return 1 ;;
 	( * )
 	    err "unknown directive '${_line%%[[:space:]]*}'"
 	    return 1
@@ -128,7 +142,7 @@ read_file ()
 	_ln="$(( ${_ln} + 1 ))"
 	case "${_line}" in
 	    ( '#%'* )
-		do_directive "${_line}" || {
+		do_directive "${_file}" "${_line}" || {
 		    err "processing error in file '${_file}' at line ${_ln}"
 		    return 1
 		} ;;
@@ -141,12 +155,17 @@ read_file ()
 absolute_path ()
 {
     local _path="$1"
+    local _base="$2"
     local _cwd="$(pwd)"
 
     test -n "${_path}" || return 1
+    case "${_base}" in
+	( /* ) ;;
+	(  * ) _base="${_cwd%/}/${_base}" ;;
+    esac
     case "${_path}" in
 	( /* ) ;;
-	(  * ) _path="${_cwd%/}/${_path}" ;;
+	(  * ) _path="${_base%/}/${_path}" ;;
     esac
     printf "%s" "${_path}"
 }
@@ -185,13 +204,8 @@ process_file ()
     local _file="$1"
     local _cfile=""
 
-    {
-	_file="$(absolute_path "${_file}")"	&&
-	check_file "${_file}"			&&
-	_cfile="$(canonical_path "${_file}")"
-    } || return 1
-
-    # Add to filenames stack
+    # Add canonical file name to stack (for cyclic include determination)
+    _cfile="$(canonical_path "${_file}")" || return 1
     case " ${FSTACK} " in
 	( *" ${_cfile} "* )
 	    err "cyclic include of file '${_file}'"
@@ -203,7 +217,7 @@ process_file ()
     # Read file
     read_file "${_file}" || return 1
 
-    # Remove from filenames stack
+    # Remove from file names stack
     FSTACK="${FSTACK%"${_cfile}"*}"
     FSTACK="${FSTACK%" "*}"	# Remove trailing space
 )
@@ -211,8 +225,14 @@ process_file ()
 # Main subroutine
 main ()
 {
+    local _file=""
+
     test $# -eq 1 || { usage ; return 1 ; }
-    process_file "$1"
+    {
+	_file="$(absolute_path "$1")"	&&
+	check_file "${_file}"		&&
+	process_file "${_file}"
+    } || return 1
 }
 
 # Call main subroutine
