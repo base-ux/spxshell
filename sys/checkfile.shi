@@ -1,15 +1,15 @@
 # Check file
 check_file ()
 {
-    local _file="$1"
+    local _path="$1"
 
-    test -n "${_file}" || return 1
-    if ! test -f "${_file}" ; then
-	err "file '${_file}' not found"
+    test -n "${_path}" || return 1
+    if ! test -f "${_path}" ; then
+	err "file '${_path}' not found"
 	return 1
     fi
-    if ! test -r "${_file}" ; then
-	err "can't open file '${_file}'"
+    if ! test -r "${_path}" ; then
+	err "can't open file '${_path}'"
 	return 1
     fi
 }
