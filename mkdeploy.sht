@@ -230,7 +230,7 @@ main ()
     cleanup
 }
 
-#%include deploy/deploy-embed.shi
+#%include deploy-embed.shi
 
 # Call main subroutine
 main "$@"
