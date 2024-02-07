@@ -6,6 +6,7 @@ embed ()
 {
     cat << 'BEGIN' ; cat << PARAMS ; cat << 'MAIN' ; cat << BLOB ; cat << 'END'
 #%shebang
+#%version 1
 
 BEGIN
 ### Deploy parameters

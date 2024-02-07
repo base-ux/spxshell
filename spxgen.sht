@@ -1,5 +1,7 @@
 #%shebang
 
+SPXGEN_VERSION="1"
+
 #%prolog
 
 #%include sys/msg.shi
@@ -80,6 +82,21 @@ do_include ()
     done
 }
 
+# Process '#%version' directive
+do_version ()
+{
+    local _file="$1"
+    local _line="$2"
+
+    set -- ${_line##'#%version'}
+    if test $# -ne 0 ; then
+	printf "# version: %s\n" "$*"
+	if test -n "${SPXGEN_VERSION}" ; then
+	    printf "# spxgen version: %s\n" "${SPXGEN_VERSION}"
+	fi
+    fi
+}
+
 # Examine directive and call handler
 do_directive ()
 {
@@ -93,6 +110,8 @@ do_directive ()
 	    do_prolog  "${_file}" "${_line}" || return 1 ;;
 	( '#%include' | '#%include'[[:space:]]* )
 	    do_include "${_file}" "${_line}" || return 1 ;;
+	( '#%version' | '#%version'[[:space:]]* )
+	    do_version "${_file}" "${_line}" || return 1 ;;
 	( * )
 	    err "unknown directive '${_line%%[[:space:]]*}'"
 	    return 1
