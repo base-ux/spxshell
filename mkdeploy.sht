@@ -1,11 +1,12 @@
 #%shebang
-#%version 1
+#%version 2
 
 #%prolog
 
 #%include sys/msg.shi
 #%include sys/cmd.shi
 #%include sys/findcmd.shi
+#%include sys/checkfile.shi
 #%include sys/checkdir.shi
 #%include sys/checkvar.shi
 #%include deploy/checksum.shi
@@ -32,6 +33,7 @@ MD5SUM=""
 startup ()
 {
     local _f=""
+    local _flist=""
 
     # Check binaries
     # Encode
@@ -71,12 +73,16 @@ startup ()
 	return 1
     fi
 
-    # Check files
+    # Check files and convert to relative paths
     for _f in ${FILELIST} ${INITFILE} ; do
-	test -r "${SRCDIR}/${_f}" && continue
-	err "file '${_f}' not found in directory '${SRCDIR}'"
-	return 1
+	case "${_f}" in
+	    ( /* ) _f="${_f#"${SRCDIR}/"}" ;;
+	esac
+	check_file "${SRCDIR}/${_f}" || return 1
+	_flist="${_flist:+"${_flist} "}${_f}"
     done
+    FILELIST="${_flist}"
+    INITFILE="${INITFILE#"${SRCDIR}/"}"	# In the case of absolute path
 
     # Check working directory
     check_dir "${WORKDIR}" || return 1
@@ -90,7 +96,7 @@ startup ()
 # Create archive
 mkpack ()
 {
-    if ! pack_${pack_cmd} "${W_ARCH}" ; then
+    if ! pack_${pack_cmd} "${W_ARCH}" "${SRCDIR}" "${FILELIST}" ; then
 	err "can't pack file '${W_ARCH}'"
 	return 1
     fi
@@ -112,7 +118,7 @@ mkblob ()
 # Generate deploy script
 mkdeploy ()
 {
-    embed > "${W_OUT}"
+    embed_deploy > "${W_OUT}"
 }
 
 # Copy generated deploy script

@@ -3,14 +3,12 @@ pack_cmd=""
 # Pack methods
 
 pack_pax ()
-{
-    (
-	cd "${SRCDIR}"
-	cmd pax -w -x ustar -f "$1" ${FILELIST} ${INITFILE}
-    )
-}
+(
+    cd "$2"
+    cmd pax -w -x ustar -f "$1" $3
+)
 
 pack_tar ()
 {
-    cmd tar -c -f "$1" -C "${SRCDIR}" ${FILELIST} ${INITFILE}
+    cmd tar -c -f "$1" -C "$2" $3
 }

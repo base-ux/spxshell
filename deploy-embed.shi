@@ -2,11 +2,11 @@
 ### Embedded deploy.sh script ###
 ###
 
-embed ()
+embed_deploy ()
 {
     cat << 'BEGIN' ; cat << PARAMS ; cat << 'MAIN' ; cat << BLOB ; cat << 'END'
 #%shebang
-#%version 1
+#%version 2
 
 BEGIN
 ### Deploy parameters
@@ -102,7 +102,7 @@ extract ()
 # Unpack archive
 unpack ()
 {
-    if ! unpack_${unpack_cmd} "${ARCHFILE}" ; then
+    if ! unpack_${unpack_cmd} "${ARCHFILE}" "${XDIR}" ; then
 	err "can't unpack file '${ARCHFILE}'"
 	return 1
     fi

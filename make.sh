@@ -2,7 +2,7 @@
 
 # Set variables
 PRODUCT="spxshell"
-VERSION="0.1.0"
+VERSION="0.1.1"
 
 PROG="$(basename -- "$0")"
 
@@ -79,8 +79,8 @@ deploy ()
 	-s "${OUTDIR}" \
 	-o "${OUTDIR}/${PRODUCT}-v${VERSION}.sh" \
 	-P "${PRODUCT}" -V "${VERSION}" \
-	-i "${INSTALL##*/}" \
-	-f "${MKDEPLOY##*/} ${SPXGEN##*/}" \
+	-i "${INSTALL}" \
+	-f "${MKDEPLOY} ${SPXGEN}" \
     || return 1
 }
 

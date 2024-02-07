@@ -4,10 +4,10 @@ unpack_cmd=""
 
 unpack_pax ()
 {
-    cmd pax -r -f "$1" -s ",^,${XDIR}/,"
+    cmd pax -r -f "$1" -s ",^,$2/,"
 }
 
 unpack_tar ()
 {
-    cmd tar -x -f "$1" -C "${XDIR}"
+    cmd tar -x -f "$1" -C "$2"
 }
