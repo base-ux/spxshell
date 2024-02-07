@@ -1,0 +1,101 @@
+#%shebang
+#
+# Installation script
+#
+
+#%prolog
+
+#%include sys/msg.shi
+#%include sys/cmd.shi
+#%include sys/copyfile.shi
+#%include sys/linkfile.shi
+
+# Set variables
+SRCDIR="$(cd -- "$(dirname -- "$0")" ; pwd)"
+
+SRCFILES="
+mkdeploy.sh
+spxgen.sh
+"
+
+TSTDIRS="/usr/scripts:/usr/local/scripts:/usr/local/bin:${HOME}/bin"
+
+BINDIR=""
+LINKDIR=""
+LINK=""
+
+# Test directories
+test_dirs ()
+{
+    local _dirlist="$1"
+    local _dir=""
+    local _ifs=""
+    local _out=""
+
+    _ifs="${IFS}"	# Save IFS
+    IFS=':'
+    for _dir in ${_dirlist} ; do
+	if test -d "${_dir}" ; then
+	    test -w "${_dir}" || continue
+	    _out="${_dir}" ; break
+	else
+	    # Try to create directory
+	    cmd mkdir -p "${_dir}" || continue
+	    _out="${_dir}" ; break
+	fi
+    done
+    IFS="${_ifs}"	# Restore IFS
+    printf "%s" "${_out}"
+}
+
+# Initialization subroutine
+startup ()
+{
+    # Choose bin directory
+    BINDIR="$(test_dirs "${TSTDIRS}")"
+    if test -z "${BINDIR}" ; then
+	err "can't install in any bin directories"
+	return 1
+    fi
+    case ":${PATH}:" in
+	( *":${BINDIR}:"* ) LINK="no" ;;
+	( * ) LINK="yes" ;;
+    esac
+
+    # Choose directory for links
+    if test "${LINK}" = "yes" ; then
+	LINKDIR="$(test_dirs "${PATH}")"
+	test -n "${LINKDIR}" || LINK="no"
+    fi
+}
+
+# Copy files
+install_files ()
+{
+    local _f=""
+    local _src=""
+    local _dst=""
+    local _rc=0
+
+    for _f in ${SRCFILES} ; do
+	_src="${SRCDIR}/${_f}"
+	_dst="${BINDIR}/${_f%.sh}"
+	copy_file "${_src}" "${_dst}" || { _rc=1 ; continue ; }
+	test -x "${_dst}" || cmd chmod +x "${_dst}"
+	if test "${LINK}" = "yes" ; then
+	    _link="${LINKDIR}/${_f%.sh}"
+	    link_file "${_dst}" "${_link}"
+	fi
+    done
+    return ${_rc}
+}
+
+# Main subroutine
+main ()
+{
+    startup || return 1
+    install_files
+}
+
+# Call main subroutine
+main "$@"

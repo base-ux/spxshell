@@ -1,0 +1,34 @@
+# Create symbolic link
+link_file ()
+{
+    local _src="$1"
+    local _dst="$2"
+
+    test -n "${_src}" && test -n "${_dst}" || return 1
+    # Check source file
+    if ! test -f "${_src}" ; then
+	err "file '${_src}' not found"
+	return 1
+    fi
+    # Check destination file
+    if test -f "${_dst}" ; then
+	if test -L "${_dst}" ; then
+	    # As there is no light way for read link in POSIX shell
+	    # just compare source file with file where destination link
+	    # is pointed as workaround
+	    cmd cmp -s "${_src}" "${_dst}" && return 0	# No differences
+	fi
+	# Try to remove before copying
+	cmd rm -f "${_dst}"
+	if test $? -ne 0 ; then
+	    err "can't delete file '${_dst}'"
+	    return 1
+	fi
+    fi
+    # Try to create link
+    cmd ln -s "${_src}" "${_dst}"
+    if test $? -ne 0 ; then
+	err "can't create symbolic link '${_src}' -> '${_dst}'"
+	return 1
+    fi
+}
