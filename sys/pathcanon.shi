@@ -1,11 +1,36 @@
 # Print canonical path
 canonical_path ()
 {
-    local _path="$1"
-    local _d="${_path%/*}"
-    local _f="${_path##*/}"
+    local _p="$1"
+    local _b=""
+    local _d=""
+    local _l=""
 
-    test -n "${_path}" || return 1
-    _d="$(cd -P -- "${_d:-/}" ; pwd)"
-    printf "%s" "${_d}/${_f}"
+    test -n "${_p}" && test -e "${_p}" || return 1
+    if test -d "${_p}" ; then
+	_p="$(cd -P -- "${_p}" ; pwd)"
+    else
+	case "${_p}" in
+	    ( */* ) _b="${_p##*/}" ; _d="${_p%/*}" ;;
+	    (  *  ) _b="${_p}" ; _d="${PWD}" ;;
+	esac
+	_d="$(cd -P -- "${_d:-/}" ; pwd)" ; _d="${_d%/}"
+	while test -L "${_d}/${_b}" ; do
+	    _l="$(ls -l "${_d}/${_b}")"
+	    _l="${_l##*" -> "}"
+	    case "${_l}" in
+		( */* )
+		    _b="${_l##*/}"
+		    case "${_l}" in
+			( /* ) _d="${_l%/*}" ;;
+			(  * ) _d="${_d}/${_l%/*}" ;;
+		    esac
+		    _d="$(cd -P -- "${_d:-/}" ; pwd)" ; _d="${_d%/}"
+		    ;;
+		(  *  ) _b="${_l}" ;;
+	    esac
+	done
+	_p="${_d}/${_b}"
+    fi
+    printf "%s" "${_p}"
 }

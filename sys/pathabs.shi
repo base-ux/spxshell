@@ -1,18 +1,33 @@
 # Print absolute path
 absolute_path ()
 {
-    local _path="$1"
-    local _base="$2"
-    local _cwd="$(pwd)"
+    local _p="$1"
+    local _b="$2"
+    local _e=""
+    local _ap=""
 
-    test -n "${_path}" || return 1
-    case "${_base}" in
+    test -n "${_p}" || return 1
+    case "${_p}" in
 	( /* ) ;;
-	(  * ) _base="${_cwd%/}/${_base}" ;;
+	(  * )
+	    case "${_b}" in ( /* ) ;; ( * ) _b="${PWD%/}/${_b}" ;; esac
+	    _p="${_b%/}/${_p}"
+	    ;;
     esac
-    case "${_path}" in
-	( /* ) ;;
-	(  * ) _path="${_base%/}/${_path}" ;;
+    case "${_p}" in
+	( / ) ;;
+	( *//* | */./* | */../* | */. | */.. )
+	    while test -n "${_p}" ; do
+		_p="${_p#//}" ; _p="${_p#/}" ; _e="${_p%%/*}" ; _p="${_p#"${_e}"}"
+		case "${_e}" in
+		    ( . | '' ) ;;
+		    ( .. ) _ap="${_ap%/*}" ;;
+		    ( *  ) _ap="${_ap}/${_e}" ;;
+		esac
+	    done
+	    _p="${_ap:-/}"
+	    ;;
+	( */ ) _p="${_p%/}" ;;
     esac
-    printf "%s" "${_path}"
+    printf "%s" "${_p}"
 }
