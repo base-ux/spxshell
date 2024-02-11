@@ -1,3 +1,5 @@
+#%ifinclude ../sys/cmd.shi
+
 encode_cmd=""
 
 # Encode methods

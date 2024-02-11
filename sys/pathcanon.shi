@@ -1,3 +1,5 @@
+#%ifinclude cmd.shi
+
 # Print canonical path
 canonical_path ()
 {
@@ -16,7 +18,7 @@ canonical_path ()
 	esac
 	_d="$(cd -P -- "${_d:-/}" ; pwd)" ; _d="${_d%/}"
 	while test -L "${_d}/${_b}" ; do
-	    _l="$(ls -l "${_d}/${_b}")"
+	    _l="$(cmd ls -l "${_d}/${_b}")" || return 1
 	    _l="${_l##*" -> "}"
 	    case "${_l}" in
 		( */* )

@@ -1,3 +1,5 @@
+#%ifinclude ../sys/cmd.shi
+
 chksum_cmd=""
 
 # Checksum methods

@@ -1,3 +1,5 @@
+#%ifinclude msg.shi
+
 # Check file
 check_file ()
 {

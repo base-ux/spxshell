@@ -1,3 +1,6 @@
+#%ifinclude msg.shi
+#%ifinclude cmd.shi
+
 # Copy single source file to destination file
 copy_file ()
 {

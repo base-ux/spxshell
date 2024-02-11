@@ -1,3 +1,6 @@
+#%ifinclude msg.shi
+#%ifinclude cmd.shi
+
 # Check directory availability or create it
 check_dir ()
 {

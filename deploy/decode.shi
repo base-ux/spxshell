@@ -1,3 +1,5 @@
+#%ifinclude ../sys/cmd.shi
+
 decode_cmd=""
 
 # Decode methods

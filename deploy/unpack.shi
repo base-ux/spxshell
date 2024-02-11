@@ -1,3 +1,5 @@
+#%ifinclude ../sys/cmd.shi
+
 unpack_cmd=""
 
 # Unpack methods

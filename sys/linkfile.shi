@@ -1,3 +1,6 @@
+#%ifinclude msg.shi
+#%ifinclude cmd.shi
+
 # Create symbolic link
 link_file ()
 {

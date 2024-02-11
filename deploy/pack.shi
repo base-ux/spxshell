@@ -1,3 +1,5 @@
+#%ifinclude ../sys/cmd.shi
+
 pack_cmd=""
 
 # Pack methods
