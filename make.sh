@@ -2,7 +2,7 @@
 
 # Set variables
 PRODUCT="spxshell"
-VERSION="0.2.1"
+VERSION="0.3.0"
 
 PROG="$(basename -- "$0")"
 
@@ -22,6 +22,7 @@ INSTALL="${OUTDIR}/install.sh"
 SPXBSSRCS="
 sys/prolog
 sys/msg.shi
+sys/cmd.shi
 sys/pathabs.shi
 sys/pathcanon.shi
 sys/checkfile.shi
@@ -32,6 +33,8 @@ SRCS="
 install.sht
 mkdeploy.sht
 "
+
+SH="$(command -pv sh)"
 
 # Generate 'spxgen.sh'
 bootstrap ()
@@ -50,7 +53,7 @@ bootstrap ()
 	sed -e "/^#%prolog/r ${SRCDIR}/sys/prolog" -e "/^#%prolog/d" > "${SPXGEN_BS}"
 
     # Generate 'spxgen.sh' with bootstrap version
-    command -p sh "${SPXGEN_BS}" "${SPXGEN_SHT}" > "${SPXGEN}" || return 1
+    ${SH} "${SPXGEN_BS}" -o "${SPXGEN}" "${SPXGEN_SHT}" || return 1
 }
 
 # Generate all scripts with 'spxgen.sh'
@@ -66,7 +69,7 @@ build ()
 	    return 1
 	fi
 	_outfile="${OUTDIR}/$(basename "${_src}" ".sht").sh"
-	command -p sh "${SPXGEN}" "${_f}" > "${_outfile}" || return 1
+	${SH} "${SPXGEN}" -o "${_outfile}" "${_f}" || return 1
     done
 }
 
@@ -75,7 +78,7 @@ deploy ()
 {
     # Build scripts first
     build || return 1
-    command -p sh "${MKDEPLOY}" \
+    ${SH} "${MKDEPLOY}" \
 	-s "${OUTDIR}" \
 	-o "${OUTDIR}/${PRODUCT}-v${VERSION}.sh" \
 	-P "${PRODUCT}" -V "${VERSION}" \
@@ -89,7 +92,7 @@ install ()
 {
     # Build scripts first
     build || return 1
-    command -p sh "${INSTALL}" || return 1
+    ${SH} "${INSTALL}" || return 1
 }
 
 # Show usage information

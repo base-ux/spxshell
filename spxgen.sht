@@ -1,6 +1,6 @@
 #%shebang
 
-SPXGEN_VERSION="2"
+SPXGEN_VERSION="3"
 
 #%prolog
 
@@ -11,13 +11,84 @@ SPXGEN_VERSION="2"
 
 ################
 
+# Set variables
+
+: ${SRCFILE:=""}		# Source file
+: ${OUTFILE:="/dev/stdout"}	# Default output to stdout
+
+# RSTACK is used as filenames and line numbers stack for 'read_file' function
+# PSTACK is used as filenames stack for 'process_file' function
+# PLIST is used as filenames list of the processed files for '#%ifinclude' directive
+RSTACK=""
+PSTACK=""
+PLIST=""
+
+####
+
 # Print usage information
 usage ()
 {
     cat << EOF
-Usage: ${PROG} file
+Usage: ${PROG} [-o outfile] inputfile
 EOF
 }
+
+# Print help information
+usage_help ()
+{
+    usage
+    cat << EOF
+
+    -o outfile	output file name
+
+    inputfile	input file name
+EOF
+    exit 0
+}
+
+####
+
+# Parse command line options
+get_options ()
+{
+    local _opt=""
+
+    case "$1" in ( '-?' | '-help' | '--help' ) usage_help ;; esac
+    while getopts ":o:" _opt ; do
+	case "${_opt}" in
+	    ( 'o' ) OUTFILE="${OPTARG}" ;;
+	    ( ':' )
+		err "missing argument for option -- '${OPTARG}'"
+		usage
+		return 1
+		;;
+	    ( '?' )
+		err "unknown option -- '${OPTARG}'"
+		usage
+		return 1
+		;;
+	    (  *  )
+		err "no handler for option '${_opt}'"
+		return 1
+		;;
+	esac
+    done
+    shift $((${OPTIND} - 1))
+    if test $# -gt 1 ; then
+	err "too many arguments"
+	usage
+	return 1
+    elif test $# -eq 0 && test -z "${SRCFILE}" ; then
+	# SRCFILE may be set via environment
+	err "mandatory argument missing"
+	usage
+	return 1
+    else
+	: ${SRCFILE:="$1"}
+    fi
+}
+
+####
 
 # Process '#%shebang' directive
 do_shebang ()
@@ -147,6 +218,8 @@ do_directive ()
     esac
 }
 
+####
+
 # Read file
 read_file ()
 {
@@ -215,15 +288,19 @@ process_file ()
     esac
 }
 
+####
+
 # Main subroutine
 main ()
 {
-    local _file=""
+    local _ifile=""
+    local _ofile=""
 
-    test $# -eq 1 || { usage ; return 1 ; }
+    get_options "$@" || return 1
     {
-	_file="$(absolute_path "$1")"	&&
-	process_file "${_file}"
+	_ifile="$(absolute_path "${SRCFILE}")"	&&
+	_ofile="$(absolute_path "${OUTFILE}")"	&&
+	process_file "${_ifile}" > "${_ofile}"
     } || return 1
 }
 
