@@ -1,6 +1,6 @@
 #%shebang
 
-SPXGEN_VERSION="1"
+SPXGEN_VERSION="2"
 
 #%prolog
 
@@ -76,8 +76,32 @@ do_include ()
     for _f in "$@" ; do
 	{
 	    _f="$(absolute_path "${_f}" "${_file%/*}")"	&&
-	    check_file "${_f}"	&&
 	    process_file "${_f}"
+	} || return 1
+    done
+}
+
+# Process '#%ifinclude' directive
+do_ifinclude ()
+{
+    local _file="$1"
+    local _line="$2"
+    local _f=""
+    local _cf=""
+
+    set -- ${_line##'#%ifinclude'}
+    if test $# -eq 0 ; then
+	err "no parameters set for '#%ifinclude' directive"
+	return 1
+    fi
+    for _f in "$@" ; do
+	{
+	    _f="$(absolute_path "${_f}" "${_file%/*}")"	&&
+	    _cf="$(canonical_path "${_f}")" &&
+	    case "|${PLIST}|" in
+		( *"|${_cf}|"* ) ;;
+		( * ) process_file "${_f}" ;;
+	    esac
 	} || return 1
     done
 }
@@ -110,6 +134,8 @@ do_directive ()
 	    do_prolog  "${_file}" "${_line}" || return 1 ;;
 	( '#%include' | '#%include'[[:space:]]* )
 	    do_include "${_file}" "${_line}" || return 1 ;;
+	( '#%ifinclude' | '#%ifinclude'[[:space:]]* )
+	    do_ifinclude "${_file}" "${_line}" || return 1 ;;
 	( '#%version' | '#%version'[[:space:]]* )
 	    do_version "${_file}" "${_line}" || return 1 ;;
 	( * )
@@ -125,44 +151,67 @@ read_file ()
     local _file="$1"
     local _ln=0
     local _line=""
+    local _rc=0
 
     test -n "${_file}" || return 1
     while IFS= read -r _line ; do
 	_ln="$(( ${_ln} + 1 ))"
 	case "${_line}" in
 	    ( '#%'* )
-		do_directive "${_file}" "${_line}" || {
+		# Save file name and line number
+		RSTACK="${RSTACK:+"${RSTACK}|"}${_file}:${_ln}"
+		# Execute directive
+		do_directive "${_file}" "${_line}" ; _rc=$?
+		# Restore file name and line number
+		_file="${RSTACK##*'|'}"
+		RSTACK="${RSTACK%"${_file}"*}"
+		RSTACK="${RSTACK%'|'*}"	# Remove trailing bar
+		_ln="${_file##*':'}" ; _file="${_file%':'*}"
+		# Finally check for error
+		if test ${_rc} -ne 0 ; then
 		    err "processing error in file '${_file}' at line ${_ln}"
 		    return 1
-		} ;;
+		fi
+		;;
 	    ( * ) printf "%s\n" "${_line}" ;;
 	esac
     done < "${_file}"
 }
 
-# Process file (executes in subshell)
+# Process file
 process_file ()
-(
+{
     local _file="$1"
     local _cfile=""
 
+    # Check file
+    check_file "${_file}" || return 1
+
     # Add canonical file name to stack (for cyclic include determination)
     _cfile="$(canonical_path "${_file}")" || return 1
-    case " ${FSTACK} " in
-	( *" ${_cfile} "* )
+    case "|${PSTACK}|" in
+	( *"|${_cfile}|"* )
 	    err "cyclic include of file '${_file}'"
 	    return 1
 	    ;;
-	( * ) FSTACK="${FSTACK:+"${FSTACK} "}${_cfile}" ;;
+	( * ) PSTACK="${PSTACK:+"${PSTACK}|"}${_cfile}" ;;
     esac
 
     # Read file
     read_file "${_file}" || return 1
 
     # Remove from file names stack
-    FSTACK="${FSTACK%"${_cfile}"*}"
-    FSTACK="${FSTACK%" "*}"	# Remove trailing space
-)
+    _cfile="${PSTACK##*'|'}"	# Restore _cfile
+    PSTACK="${PSTACK%"${_cfile}"*}"
+    PSTACK="${PSTACK%'|'*}"	# Remove trailing bar
+
+    # Add canonical file name to the list of processed files
+    # which is used in conditional '#%ifinclude' directive
+    case " ${PLIST} " in
+	( *"|${_cfile}|"* ) ;;
+	( * ) PLIST="${PLIST:+"${PLIST}|"}${_cfile}" ;;
+    esac
+}
 
 # Main subroutine
 main ()
@@ -172,7 +221,6 @@ main ()
     test $# -eq 1 || { usage ; return 1 ; }
     {
 	_file="$(absolute_path "$1")"	&&
-	check_file "${_file}"		&&
 	process_file "${_file}"
     } || return 1
 }
