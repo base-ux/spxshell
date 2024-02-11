@@ -1,4 +1,16 @@
+
+########
 # Print error message
+# Arguments:
+#   $@  message to print
+# Return:
+#   none
+# Input:
+#   none
+# Output:
+#   none
+########
+
 err ()
 {
     printf "%s: error: %s\n" "${PROG}" "$*" >&2

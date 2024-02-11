@@ -1,7 +1,19 @@
 #%ifinclude msg.shi
 #%ifinclude cmd.shi
 
+########
 # Check for lock file existance or create it
+# Arguments:
+#   $1  lock file to check
+# Return:
+#    0  no errors
+#    1  error
+# Input:
+#   none
+# Output:
+#   none
+########
+
 check_lock ()
 {
     local _lock="$1"

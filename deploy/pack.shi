@@ -1,9 +1,27 @@
 #%ifinclude ../sys/cmd.shi
 
+########
+# A set of pack functions (methods)
+# Arguments:
+#   $1  archive file name
+#   $2  directory where files to be archived are located
+#   $3  list of files to be archived
+# Return:
+#    0  no errors
+#   >0  error from called command
+# Input:
+#   none
+# Output:
+#   none
+########
+
+# 'pack_cmd' variable must be initialized by 'find_command' function
 pack_cmd=""
 
 # Pack methods
 
+# 'pax' does not have option to set 'working directory' (as -C option for 'tar')
+# so execute 'pack_pax' function in subshell
 pack_pax ()
 (
     cd "$2"

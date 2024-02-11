@@ -9,6 +9,8 @@ SPXGEN_VERSION="2"
 #%include sys/pathcanon.shi
 #%include sys/checkfile.shi
 
+################
+
 # Print usage information
 usage ()
 {

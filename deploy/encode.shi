@@ -1,5 +1,19 @@
 #%ifinclude ../sys/cmd.shi
 
+########
+# A set of encode functions (methods)
+# Arguments:
+#   $1  file name where to write encoded output
+# Return:
+#    0  no errors
+#   >0  error from called command
+# Input:
+#   stream to encode with base64 algorithm
+# Output:
+#   none
+########
+
+# 'encode_cmd' variable must be initialized by 'find_command' function
 encode_cmd=""
 
 # Encode methods

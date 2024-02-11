@@ -1,7 +1,20 @@
 #%ifinclude msg.shi
 #%ifinclude cmd.shi
 
+########
 # Copy single source file to destination file
+# Arguments:
+#   $1  source file path
+#   $2  destination file path
+# Return:
+#    0  no errors
+#    1  error
+# Input:
+#   none
+# Output:
+#   none
+########
+
 copy_file ()
 {
     local _src="$1"

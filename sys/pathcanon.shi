@@ -1,6 +1,18 @@
 #%ifinclude cmd.shi
 
-# Print canonical path
+########
+# Print canonical path (some sort of 'realpath' replacemant)
+# Arguments:
+#   $1  path to check and convert to canonical path
+# Return:
+#    0  no errors
+#    1  error
+# Input:
+#   none
+# Output:
+#   canonical path
+########
+
 canonical_path ()
 {
     local _p="$1"
@@ -8,31 +20,37 @@ canonical_path ()
     local _d=""
     local _l=""
 
+    # If path does not exist then return error
     test -n "${_p}" && test -e "${_p}" || return 1
     if test -d "${_p}" ; then
+	# If path is directory just go there and get 'pwd'
 	_p="$(cd -P -- "${_p}" ; pwd)"
     else
+	# Otherwise split path to 'basename' and 'dirname'
 	case "${_p}" in
 	    ( */* ) _b="${_p##*/}" ; _d="${_p%/*}" ;;
 	    (  *  ) _b="${_p}" ; _d="${PWD}" ;;
 	esac
+	# Get actual (physical) directory for 'basename'
 	_d="$(cd -P -- "${_d:-/}" ; pwd)" ; _d="${_d%/}"
 	while test -L "${_d}/${_b}" ; do
+	    # Get link path from 'ls' output
 	    _l="$(cmd ls -l "${_d}/${_b}")" || return 1
 	    _l="${_l##*" -> "}"
 	    case "${_l}" in
 		( */* )
-		    _b="${_l##*/}"
+		    _b="${_l##*/}"	# Get next 'basename'
 		    case "${_l}" in
-			( /* ) _d="${_l%/*}" ;;
-			(  * ) _d="${_d}/${_l%/*}" ;;
+			( /* ) _d="${_l%/*}" ;;		# 'Absolute' path
+			(  * ) _d="${_d}/${_l%/*}" ;;	# 'Relative' path
 		    esac
+		    # Get actual (physical) directory for 'basename'
 		    _d="$(cd -P -- "${_d:-/}" ; pwd)" ; _d="${_d%/}"
 		    ;;
-		(  *  ) _b="${_l}" ;;
+		(  *  ) _b="${_l}" ;;	# Link points to file in the same directory
 	    esac
 	done
-	_p="${_d}/${_b}"
+	_p="${_d}/${_b}"	# Final physical path
     fi
     printf "%s" "${_p}"
 }

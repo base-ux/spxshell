@@ -1,10 +1,26 @@
+
+########
 # Print first found command in the list
+# Arguments:
+#   $@  list of commands to check
+# Return:
+#   none
+# Input:
+#   none
+# Output:
+#   command from the list if found, otherwise empty string
+########
+
 find_command ()
 {
     local _cmd=""
 
     for _cmd in "$@" ; do
-	command -v "${_cmd}" >/dev/null 2>&1 && { echo "${_cmd}" ; return ; } || continue
+	command -v "${_cmd}" >/dev/null 2>&1 &&
+	{
+	    printf "%s" "${_cmd}"
+	    return
+	} || continue
     done
-    echo ""
+    printf ""
 }

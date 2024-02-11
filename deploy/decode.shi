@@ -1,5 +1,19 @@
 #%ifinclude ../sys/cmd.shi
 
+########
+# A set of decode functions (methods)
+# Arguments:
+#   $1  file name where to write decoded output
+# Return:
+#    0  no errors
+#   >0  error from called command
+# Input:
+#   base64 encoded stream
+# Output:
+#   none
+########
+
+# 'decode_cmd' variable must be initialized by 'find_command' function
 decode_cmd=""
 
 # Decode methods

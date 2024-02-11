@@ -1,5 +1,19 @@
 #%ifinclude ../sys/cmd.shi
 
+########
+# A set of checksum functions (methods)
+# Arguments:
+#   $1  file name to calculate checksum for
+# Return:
+#    0  no errors
+#   >0  error from called command
+# Input:
+#   none
+# Output:
+#   checksum for file
+########
+
+# 'chksum_cmd' variable must be initialized by 'find_command' function
 chksum_cmd=""
 
 # Checksum methods

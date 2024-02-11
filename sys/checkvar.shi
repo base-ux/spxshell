@@ -1,6 +1,18 @@
 #%ifinclude msg.shi
 
+########
 # Check for empty variable
+# Arguments:
+#   $1  variable name to check
+# Return:
+#    0  no errors
+#    1  error
+# Input:
+#   none
+# Output:
+#   none
+########
+
 check_var ()
 {
     local _var="$1"

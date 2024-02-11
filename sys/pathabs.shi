@@ -1,4 +1,19 @@
+
+########
 # Print absolute path
+# Arguments:
+#   $1  path to check and convert to absolute path
+#   $2  'base' path to use for relative $1 path
+#	PWD variable used if $2 is not set or empty
+# Return:
+#    0  no errors
+#    1  error
+# Input:
+#   none
+# Output:
+#   absolute path
+########
+
 absolute_path ()
 {
     local _p="$1"
@@ -8,26 +23,30 @@ absolute_path ()
 
     test -n "${_p}" || return 1
     case "${_p}" in
-	( /* ) ;;
+	( /* ) ;;	# Already begin with '/'
 	(  * )
+	    # Check 'base' path. If not begin with '/' assume relative to PWD
 	    case "${_b}" in ( /* ) ;; ( * ) _b="${PWD%/}/${_b}" ;; esac
-	    _p="${_b%/}/${_p}"
+	    _p="${_b%/}/${_p}"	# Normalize path to begin with '/'
 	    ;;
     esac
     case "${_p}" in
-	( / ) ;;
+	( / ) ;;	# Root directory - nothing to do
 	( *//* | */./* | */../* | */. | */.. )
+	    # If path contains several slashes, dot or dot-dot then convert it
 	    while test -n "${_p}" ; do
-		_p="${_p#//}" ; _p="${_p#/}" ; _e="${_p%%/*}" ; _p="${_p#"${_e}"}"
+		_p="${_p#//}" ; _p="${_p#/}"	# Remove leading '/'
+		_e="${_p%%/*}"			# Get next path element
+		_p="${_p#"${_e}"}"		# Remove this element from path
 		case "${_e}" in
-		    ( . | '' ) ;;
-		    ( .. ) _ap="${_ap%/*}" ;;
-		    ( *  ) _ap="${_ap}/${_e}" ;;
+		    ( . | '' ) ;;			# Skip
+		    ( .. ) _ap="${_ap%/*}" ;;		# Remove last path element
+		    ( *  ) _ap="${_ap}/${_e}" ;;	# Add element to path
 		esac
 	    done
-	    _p="${_ap:-/}"
+	    _p="${_ap:-/}"	# Set final path (or root directory if empty)
 	    ;;
-	( */ ) _p="${_p%/}" ;;
+	( */ ) _p="${_p%/}" ;;	# Chop trailing slash
     esac
     printf "%s" "${_p}"
 }

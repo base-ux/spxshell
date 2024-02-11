@@ -30,6 +30,8 @@ PARAMS
 #%include deploy/decode.shi
 #%include deploy/unpack.shi
 
+################
+
 # Set variables
 : ${XDG_CACHE_HOME:="${HOME}/.cache"}
 

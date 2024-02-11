@@ -1,5 +1,20 @@
 #%ifinclude ../sys/cmd.shi
 
+########
+# A set of unpack functions (methods)
+# Arguments:
+#   $1  archive file name
+#   $2  directory where unpack files
+# Return:
+#    0  no errors
+#   >0  error from called command
+# Input:
+#   none
+# Output:
+#   none
+########
+
+# 'unpack_cmd' variable must be initialized by 'find_command' function
 unpack_cmd=""
 
 # Unpack methods

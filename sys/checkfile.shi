@@ -1,6 +1,18 @@
 #%ifinclude msg.shi
 
-# Check file
+########
+# Check file availability
+# Arguments:
+#   $1  file to check
+# Return:
+#    0  no errors
+#    1  error
+# Input:
+#   none
+# Output:
+#   none
+########
+
 check_file ()
 {
     local _path="$1"
