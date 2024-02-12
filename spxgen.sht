@@ -1,6 +1,6 @@
 #%shebang
 
-SPXGEN_VERSION="3"
+SPXGEN_VERSION="4"
 
 #%prolog
 
@@ -78,13 +78,13 @@ get_options ()
 	err "too many arguments"
 	usage
 	return 1
-    elif test $# -eq 0 && test -z "${SRCFILE}" ; then
+    elif test $# -eq 1 ; then
+	SRCFILE="$1"
+    elif test -z "${SRCFILE}" ; then
 	# SRCFILE may be set via environment
 	err "mandatory argument missing"
 	usage
 	return 1
-    else
-	: ${SRCFILE:="$1"}
     fi
 }
 
@@ -238,10 +238,10 @@ read_file ()
 		# Execute directive
 		do_directive "${_file}" "${_line}" ; _rc=$?
 		# Restore file name and line number
-		_file="${RSTACK##*'|'}"
+		_file="${RSTACK##*"|"}"
 		RSTACK="${RSTACK%"${_file}"*}"
-		RSTACK="${RSTACK%'|'*}"	# Remove trailing bar
-		_ln="${_file##*':'}" ; _file="${_file%':'*}"
+		RSTACK="${RSTACK%"|"*}"	# Remove trailing bar
+		_ln="${_file##*":"}" ; _file="${_file%":"*}"
 		# Finally check for error
 		if test ${_rc} -ne 0 ; then
 		    err "processing error in file '${_file}' at line ${_ln}"
@@ -276,9 +276,9 @@ process_file ()
     read_file "${_file}" || return 1
 
     # Remove from file names stack
-    _cfile="${PSTACK##*'|'}"	# Restore _cfile
+    _cfile="${PSTACK##*"|"}"	# Restore _cfile
     PSTACK="${PSTACK%"${_cfile}"*}"
-    PSTACK="${PSTACK%'|'*}"	# Remove trailing bar
+    PSTACK="${PSTACK%"|"*}"	# Remove trailing bar
 
     # Add canonical file name to the list of processed files
     # which is used in conditional '#%ifinclude' directive
