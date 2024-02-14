@@ -1,6 +1,6 @@
 #%shebang
 
-SPXGEN_VERSION="5"
+SPXGEN_VERSION="6"
 
 #%prolog
 
@@ -16,12 +16,14 @@ SPXGEN_VERSION="5"
 : ${SRCFILE:=""}		# Source file
 : ${OUTFILE:="/dev/stdout"}	# Default output to stdout
 
-# RSTACK is used as filenames and line numbers stack for 'read_file' function
 # PSTACK is used as filenames stack for 'process_file' function
 # PLIST is used as filenames list of the processed files for '#%ifinclude' directive
-RSTACK=""
+# CURFILE is currently processing filename
+# CURLINE is currently read line in CURFILE
 PSTACK=""
 PLIST=""
+CURFILE=""
+CURLINE=""
 
 ####
 
@@ -101,10 +103,7 @@ output_line ()
 # Process '#%shebang' directive
 do_shebang ()
 {
-    local _file="$1"
-    local _line="$2"
-
-    case "${_line}" in
+    case "${CURLINE}" in
 	( *[[:space:]][![:space:]]* )
 	    err "no parameters allowed for '#%shebang' directive"
 	    return 1
@@ -116,17 +115,15 @@ do_shebang ()
 # Process '#%prolog' directive
 do_prolog ()
 {
-    local _file="$1"
-    local _line="$2"
     local _f=""
 
-    case "${_line}" in
+    case "${CURLINE}" in
 	( *[[:space:]][![:space:]]* )
 	    err "no parameters allowed for '#%prolog' directive"
 	    return 1
 	    ;;
     esac
-    _f="$(absolute_path "sys/prolog" "${_file%/*}")"
+    _f="$(absolute_path "sys/prolog" "${CURFILE%/*}")"
     if test -f "${_f}" ; then
 	process_file "${_f}"
     else
@@ -145,18 +142,16 @@ EOF
 # Process '#%include' directive
 do_include ()
 {
-    local _file="$1"
-    local _line="$2"
     local _f=""
 
-    set -- ${_line##'#%include'}
+    set -- ${CURLINE##'#%include'}
     if test $# -eq 0 ; then
 	err "no parameters set for '#%include' directive"
 	return 1
     fi
     for _f in "$@" ; do
 	{
-	    _f="$(absolute_path "${_f}" "${_file%/*}")"	&&
+	    _f="$(absolute_path "${_f}" "${CURFILE%/*}")"	&&
 	    process_file "${_f}"
 	} || return 1
     done
@@ -165,20 +160,18 @@ do_include ()
 # Process '#%ifinclude' directive
 do_ifinclude ()
 {
-    local _file="$1"
-    local _line="$2"
     local _f=""
     local _cf=""
 
-    set -- ${_line##'#%ifinclude'}
+    set -- ${CURLINE##'#%ifinclude'}
     if test $# -eq 0 ; then
 	err "no parameters set for '#%ifinclude' directive"
 	return 1
     fi
     for _f in "$@" ; do
 	{
-	    _f="$(absolute_path "${_f}" "${_file%/*}")"	&&
-	    _cf="$(canonical_path "${_f}")" &&
+	    _f="$(absolute_path "${_f}" "${CURFILE%/*}")"	&&
+	    _cf="$(canonical_path "${_f}")"			&&
 	    case "|${PLIST}|" in
 		( *"|${_cf}|"* ) ;;
 		( * ) process_file "${_f}" ;;
@@ -190,10 +183,7 @@ do_ifinclude ()
 # Process '#%version' directive
 do_version ()
 {
-    local _file="$1"
-    local _line="$2"
-
-    set -- ${_line##'#%version'}
+    set -- ${CURLINE##'#%version'}
     if test $# -ne 0 ; then
 	output_line "# version: $*"
 	if test -n "${SPXGEN_VERSION}" ; then
@@ -205,22 +195,14 @@ do_version ()
 # Examine directive and call handler
 do_directive ()
 {
-    local _file="$1"
-    local _line="$2"
-
-    case "${_line}" in
-	( '#%shebang' | '#%shebang'[[:space:]]* )
-	    do_shebang "${_file}" "${_line}" || return 1 ;;
-	( '#%prolog'  | '#%prolog'[[:space:]]*  )
-	    do_prolog  "${_file}" "${_line}" || return 1 ;;
-	( '#%include' | '#%include'[[:space:]]* )
-	    do_include "${_file}" "${_line}" || return 1 ;;
-	( '#%ifinclude' | '#%ifinclude'[[:space:]]* )
-	    do_ifinclude "${_file}" "${_line}" || return 1 ;;
-	( '#%version' | '#%version'[[:space:]]* )
-	    do_version "${_file}" "${_line}" || return 1 ;;
+    case "${CURLINE}" in
+	( '#%shebang'   | '#%shebang'[[:space:]]*   )	do_shebang   || return 1 ;;
+	( '#%prolog'    | '#%prolog'[[:space:]]*    )	do_prolog    || return 1 ;;
+	( '#%include'   | '#%include'[[:space:]]*   )	do_include   || return 1 ;;
+	( '#%ifinclude' | '#%ifinclude'[[:space:]]* )	do_ifinclude || return 1 ;;
+	( '#%version'   | '#%version'[[:space:]]*   )	do_version   || return 1 ;;
 	( * )
-	    err "unknown directive '${_line%%[[:space:]]*}'"
+	    err "unknown directive '${CURLINE%%[[:space:]]*}'"
 	    return 1
 	    ;;
     esac
@@ -231,34 +213,25 @@ do_directive ()
 # Read file
 read_file ()
 {
-    local _file="$1"
     local _ln=0
-    local _line=""
-    local _rc=0
 
-    test -n "${_file}" || return 1
-    while IFS= read -r _line ; do
+    while IFS= read -r CURLINE ; do
 	_ln="$(( ${_ln} + 1 ))"
-	case "${_line}" in
+	case "${CURLINE}" in
 	    ( '#%'* )
-		# Save file name and line number
-		RSTACK="${RSTACK:+"${RSTACK}|"}${_file}:${_ln}"
-		# Execute directive
-		do_directive "${_file}" "${_line}" ; _rc=$?
-		# Restore file name and line number
-		_file="${RSTACK##*"|"}"
-		RSTACK="${RSTACK%"${_file}"*}"
-		RSTACK="${RSTACK%"|"*}"	# Remove trailing bar
-		_ln="${_file##*":"}" ; _file="${_file%":"*}"
-		# Finally check for error
-		if test ${_rc} -ne 0 ; then
-		    err "processing error in file '${_file}' at line ${_ln}"
+		do_directive ||
+		{
+		    err "processing error in file '${CURFILE}' at line ${_ln}"
 		    return 1
-		fi
+		}
 		;;
-	    ( * ) output_line "${_line}" ;;
+	    ( * ) output_line "${CURLINE}" ;;
 	esac
-    done < "${_file}"
+    done
+
+    # As 'read_file' is executed in subshell there is a way to hand over
+    # variables to 'upstream' 'process_file' function
+    printf 'PLIST="%s"' "${PLIST}"
 }
 
 # Process file
@@ -266,6 +239,7 @@ process_file ()
 {
     local _file="$1"
     local _cfile=""
+    local _ret=""
 
     # Check file
     check_file "${_file}" || return 1
@@ -281,7 +255,8 @@ process_file ()
     esac
 
     # Read file
-    read_file "${_file}" || return 1
+    _ret="$(CURFILE="${_file}" ; cmd cat "${CURFILE}" | read_file)"
+    test -n "${_ret}" && eval "${_ret}" || return 1
 
     # Remove from file names stack
     _cfile="${PSTACK##*"|"}"	# Restore _cfile
