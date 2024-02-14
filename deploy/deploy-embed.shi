@@ -6,7 +6,7 @@ embed_deploy ()
 {
     cat << 'BEGIN' ; cat << PARAMS ; cat << 'MAIN' ; cat << BLOB ; cat << 'END'
 #%shebang
-#%version 2
+#%version 3
 
 BEGIN
 ### Deploy parameters
@@ -20,15 +20,15 @@ MD5SUM="${MD5SUM}"
 PARAMS
 #%prolog
 
-#%include sys/msg.shi
-#%include sys/cmd.shi
-#%include sys/findcmd.shi
-#%include sys/checkdir.shi
-#%include sys/checklock.shi
-#%include sys/checkvar.shi
-#%include deploy/checksum.shi
-#%include deploy/decode.shi
-#%include deploy/unpack.shi
+#%include $R/sys/msg.shi
+#%include $R/sys/cmd.shi
+#%include $R/sys/findcmd.shi
+#%include $R/sys/checkdir.shi
+#%include $R/sys/checklock.shi
+#%include $R/sys/checkvar.shi
+#%include checksum.shi
+#%include decode.shi
+#%include unpack.shi
 
 ################
 

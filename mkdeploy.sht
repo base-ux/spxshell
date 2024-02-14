@@ -1,5 +1,5 @@
 #%shebang
-#%version 2
+#%version 3
 
 #%prolog
 
@@ -239,7 +239,7 @@ main ()
     cleanup
 }
 
-#%include deploy-embed.shi
+#%include deploy/deploy-embed.shi
 
 # Call main subroutine
 main "$@"
