@@ -1,6 +1,6 @@
 #%shebang
 
-SPXGEN_VERSION="4"
+SPXGEN_VERSION="5"
 
 #%prolog
 
@@ -90,6 +90,14 @@ get_options ()
 
 ####
 
+# Print output line
+output_line ()
+{
+    printf "%s\n" "$*" >&3
+}
+
+####
+
 # Process '#%shebang' directive
 do_shebang ()
 {
@@ -102,7 +110,7 @@ do_shebang ()
 	    return 1
 	    ;;
     esac
-    printf "#!/bin/sh\n"	# The only option for now
+    output_line "#!/bin/sh"	# The only option for now
 }
 
 # Process '#%prolog' directive
@@ -122,7 +130,7 @@ do_prolog ()
     if test -f "${_f}" ; then
 	process_file "${_f}"
     else
-	embed_prolog
+	embed_prolog >&3
     fi
 }
 
@@ -187,9 +195,9 @@ do_version ()
 
     set -- ${_line##'#%version'}
     if test $# -ne 0 ; then
-	printf "# version: %s\n" "$*"
+	output_line "# version: $*"
 	if test -n "${SPXGEN_VERSION}" ; then
-	    printf "# spxgen version: %s\n" "${SPXGEN_VERSION}"
+	    output_line "# spxgen version: ${SPXGEN_VERSION}"
 	fi
     fi
 }
@@ -248,7 +256,7 @@ read_file ()
 		    return 1
 		fi
 		;;
-	    ( * ) printf "%s\n" "${_line}" ;;
+	    ( * ) output_line "${_line}" ;;
 	esac
     done < "${_file}"
 }
@@ -290,18 +298,43 @@ process_file ()
 
 ####
 
+# Initialization subroutine
+startup ()
+{
+    SRCFILE="$(absolute_path "${SRCFILE}")"	&&
+    OUTFILE="$(absolute_path "${OUTFILE}")"	&&
+    exec 3> "${OUTFILE}"
+}
+
+# Close output descriptor
+cleanup ()
+{
+    exec 3>&-
+}
+
+# Clean up the staff and exit with error
+clean_fail ()
+{
+    cleanup
+    cmd rm -f "${OUTFILE}"
+    fail "${1:-1}"
+}
+
+# Exit with error code
+fail ()
+{
+    exit "${1:-1}"
+}
+
+####
+
 # Main subroutine
 main ()
 {
-    local _ifile=""
-    local _ofile=""
-
-    get_options "$@" || return 1
-    {
-	_ifile="$(absolute_path "${SRCFILE}")"	&&
-	_ofile="$(absolute_path "${OUTFILE}")"	&&
-	process_file "${_ifile}" > "${_ofile}"
-    } || return 1
+    get_options "$@" && startup || fail
+    trap 'clean_fail 130' HUP INT TERM
+    process_file "${SRCFILE}" || clean_fail
+    cleanup
 }
 
 # Call main subroutine
