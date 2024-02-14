@@ -1,6 +1,6 @@
 #%shebang
 
-SPXGEN_VERSION="6"
+SPXGEN_VERSION="7"
 
 #%prolog
 
@@ -15,6 +15,7 @@ SPXGEN_VERSION="6"
 
 : ${SRCFILE:=""}		# Source file
 : ${OUTFILE:="/dev/stdout"}	# Default output to stdout
+: ${ROOTDIR:=""}		# Base directory to search include files
 
 # PSTACK is used as filenames stack for 'process_file' function
 # PLIST is used as filenames list of the processed files for '#%ifinclude' directive
@@ -31,7 +32,7 @@ CURLINE=""
 usage ()
 {
     cat << EOF
-Usage: ${PROG} [-o outfile] inputfile
+Usage: ${PROG} [-o outfile] [-R basedir] inputfile
 EOF
 }
 
@@ -42,6 +43,7 @@ usage_help ()
     cat << EOF
 
     -o outfile	output file name
+    -R basedir	base directory to search include files
 
     inputfile	input file name
 EOF
@@ -56,9 +58,10 @@ get_options ()
     local _opt=""
 
     case "$1" in ( '-?' | '-help' | '--help' ) usage_help ;; esac
-    while getopts ":o:" _opt ; do
+    while getopts ":o:R:" _opt ; do
 	case "${_opt}" in
 	    ( 'o' ) OUTFILE="${OPTARG}" ;;
+	    ( 'R' ) ROOTDIR="${OPTARG}" ;;
 	    ( ':' )
 		err "missing argument for option -- '${OPTARG}'"
 		usage
@@ -96,6 +99,46 @@ get_options ()
 output_line ()
 {
     printf "%s\n" "$*" >&3
+}
+
+####
+
+# Process 'include' directives
+include_file ()
+{
+    local _f="$1"
+    local _flag="$2"
+    local _if=""
+    local _cf=""
+
+    case "${_f}" in
+	(    /*  ) _if="$(absolute_path "${_f}")" ;;
+	( '$R/'* ) _if="$(absolute_path "${_f#"\$R/"}" "${ROOTDIR}")" ;;
+	( * )
+	    {
+		# First check path relative to CURFILE
+		_if="$(absolute_path "${_f}" "${CURFILE%/*}")"	&&
+		test -f "${_if}"
+	    } ||
+	    {
+		# Second check path relative to ROOTDIR
+		_if="$(absolute_path "${_f}" "${ROOTDIR}")"	&&
+		test -f "${_if}"
+	    } ||
+	    {
+		err "can't include file '${_f}'"
+		return 1
+	    }
+	    ;;
+    esac
+    if test -n "${_flag}" ; then
+	# If conditional include check if file was included already
+	_cf="$(canonical_path "${_if}")"	&&
+	case "|${PLIST}|" in
+	    ( *"|${_cf}|"* ) return ;;
+	esac
+    fi
+    process_file "${_if}"
 }
 
 ####
@@ -150,10 +193,7 @@ do_include ()
 	return 1
     fi
     for _f in "$@" ; do
-	{
-	    _f="$(absolute_path "${_f}" "${CURFILE%/*}")"	&&
-	    process_file "${_f}"
-	} || return 1
+	include_file "${_f}" || return 1
     done
 }
 
@@ -169,14 +209,7 @@ do_ifinclude ()
 	return 1
     fi
     for _f in "$@" ; do
-	{
-	    _f="$(absolute_path "${_f}" "${CURFILE%/*}")"	&&
-	    _cf="$(canonical_path "${_f}")"			&&
-	    case "|${PLIST}|" in
-		( *"|${_cf}|"* ) ;;
-		( * ) process_file "${_f}" ;;
-	    esac
-	} || return 1
+	include_file "${_f}" "true" || return 1
     done
 }
 
@@ -276,7 +309,9 @@ process_file ()
 # Initialization subroutine
 startup ()
 {
+    ROOTDIR="${ROOTDIR:+"$(absolute_path "${ROOTDIR}")"}"
     SRCFILE="$(absolute_path "${SRCFILE}")"	&&
+    : ${ROOTDIR:="${SRCFILE%/*}"}		&&
     OUTFILE="$(absolute_path "${OUTFILE}")"	&&
     exec 3> "${OUTFILE}"
 }
