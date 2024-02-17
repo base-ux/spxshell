@@ -1,4 +1,4 @@
-#%ifinclude sys/msg.shi
+#%ifinclude sys/msg
 
 ########
 # Check file availability

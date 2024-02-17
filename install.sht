@@ -1,15 +1,15 @@
 #%shebang
-#%version 1
+#%version 2
 #
 # Installation script
 #
 
 #%prolog
 
-#%include sys/msg.shi
-#%include sys/cmd.shi
-#%include sys/copyfile.shi
-#%include sys/linkfile.shi
+#%include sys/msg
+#%include sys/cmd
+#%include sys/copyfile
+#%include sys/linkfile
 
 ################
 

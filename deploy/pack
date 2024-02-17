@@ -1,4 +1,4 @@
-#%ifinclude sys/cmd.shi
+#%ifinclude sys/cmd
 
 ########
 # A set of pack functions (methods)

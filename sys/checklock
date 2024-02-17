@@ -1,5 +1,5 @@
-#%ifinclude sys/msg.shi
-#%ifinclude sys/cmd.shi
+#%ifinclude sys/msg
+#%ifinclude sys/cmd
 
 ########
 # Check for lock file existance or create it

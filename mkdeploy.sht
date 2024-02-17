@@ -1,17 +1,17 @@
 #%shebang
-#%version 3
+#%version 4
 
 #%prolog
 
-#%include sys/msg.shi
-#%include sys/cmd.shi
-#%include sys/findcmd.shi
-#%include sys/checkfile.shi
-#%include sys/checkdir.shi
-#%include sys/checkvar.shi
-#%include deploy/checksum.shi
-#%include deploy/encode.shi
-#%include deploy/pack.shi
+#%include sys/msg
+#%include sys/cmd
+#%include sys/findcmd
+#%include sys/checkfile
+#%include sys/checkdir
+#%include sys/checkvar
+#%include deploy/checksum
+#%include deploy/encode
+#%include deploy/pack
 
 ################
 
@@ -239,7 +239,7 @@ main ()
     cleanup
 }
 
-#%include deploy/deploy-embed.shi
+#%include deploy/deploy-embed
 
 # Call main subroutine
 main "$@"

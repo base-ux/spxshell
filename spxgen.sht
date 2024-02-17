@@ -1,29 +1,29 @@
 #%shebang
 
-SPXGEN_VERSION="8"
+SPXGEN_VERSION="9"
 
 #%prolog
 
-#%include sys/msg.shi
-#%include sys/cmd.shi
-#%include sys/pathabs.shi
-#%include sys/pathcanon.shi
-#%include sys/checkfile.shi
+#%include sys/msg
+#%include sys/cmd
+#%include sys/pathabs
+#%include sys/pathcanon
+#%include sys/checkfile
 
 ################
 
 #%embed sys/prolog prolog sys/prolog
-#%embed sys/msg.shi msg sys/msg.shi
-#%embed sys/cmd.shi cmd sys/cmd.shi
-#%embed sys/findcmd.shi findcmd sys/findcmd.shi
-#%embed sys/checkdir.shi checkdir sys/checkdir.shi
-#%embed sys/checkfile.shi checkfile sys/checkfile.shi
-#%embed sys/checklock.shi checklock sys/checklock.shi
-#%embed sys/checkvar.shi checkvar sys/checkvar.shi
-#%embed sys/copyfile.shi copyfile sys/copyfile.shi
-#%embed sys/linkfile.shi linkfile sys/linkfile.shi
-#%embed sys/pathabs.shi pathabs sys/pathabs.shi
-#%embed sys/pathcanon.shi pathcanon sys/pathcanon.shi
+#%embed sys/msg msg sys/msg
+#%embed sys/cmd cmd sys/cmd
+#%embed sys/findcmd findcmd sys/findcmd
+#%embed sys/checkdir checkdir sys/checkdir
+#%embed sys/checkfile checkfile sys/checkfile
+#%embed sys/checklock checklock sys/checklock
+#%embed sys/checkvar checkvar sys/checkvar
+#%embed sys/copyfile copyfile sys/copyfile
+#%embed sys/linkfile linkfile sys/linkfile
+#%embed sys/pathabs pathabs sys/pathabs
+#%embed sys/pathcanon pathcanon sys/pathcanon
 
 ################
 

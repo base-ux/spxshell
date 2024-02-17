@@ -20,15 +20,15 @@ MD5SUM="${MD5SUM}"
 PARAMS
 #%prolog
 
-#%include sys/msg.shi
-#%include sys/cmd.shi
-#%include sys/findcmd.shi
-#%include sys/checkdir.shi
-#%include sys/checklock.shi
-#%include sys/checkvar.shi
-#%include deploy/checksum.shi
-#%include deploy/decode.shi
-#%include deploy/unpack.shi
+#%include sys/msg
+#%include sys/cmd
+#%include sys/findcmd
+#%include sys/checkdir
+#%include sys/checklock
+#%include sys/checkvar
+#%include deploy/checksum
+#%include deploy/decode
+#%include deploy/unpack
 
 ################
 

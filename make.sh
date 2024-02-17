@@ -2,7 +2,7 @@
 
 # Set variables
 PRODUCT="spxshell"
-VERSION="0.5.0"
+VERSION="0.5.1"
 
 PROG="$(basename -- "$0")"
 
@@ -21,11 +21,11 @@ INSTALL="${OUTDIR}/install.sh"
 
 SPXBSSRCS="
 sys/prolog
-sys/msg.shi
-sys/cmd.shi
-sys/pathabs.shi
-sys/pathcanon.shi
-sys/checkfile.shi
+sys/msg
+sys/cmd
+sys/pathabs
+sys/pathcanon
+sys/checkfile
 spxgen.sht
 "
 
