@@ -2,7 +2,7 @@
 
 # Set variables
 PRODUCT="spxshell"
-VERSION="0.4.0"
+VERSION="0.5.0"
 
 PROG="$(basename -- "$0")"
 
@@ -49,8 +49,7 @@ bootstrap ()
     done
 
     # Assemble bootstrap version of 'spxgen.sh'
-    eval cat "${BSFILES}" |
-	sed -e "/^#%prolog/r ${SRCDIR}/sys/prolog" -e "/^#%prolog/d" > "${SPXGEN_BS}"
+    eval cat "${BSFILES}" > "${SPXGEN_BS}"
 
     # Generate 'spxgen.sh' with bootstrap version
     ${SH} "${SPXGEN_BS}" -o "${SPXGEN}" "${SPXGEN_SHT}" || return 1

@@ -1,4 +1,4 @@
-#%ifinclude ../sys/cmd.shi
+#%ifinclude sys/cmd.shi
 
 ########
 # A set of decode functions (methods)

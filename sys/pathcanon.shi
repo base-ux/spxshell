@@ -1,4 +1,4 @@
-#%ifinclude cmd.shi
+#%ifinclude sys/cmd.shi
 
 ########
 # Print canonical path (some sort of 'realpath' replacemant)

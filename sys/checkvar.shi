@@ -1,4 +1,4 @@
-#%ifinclude msg.shi
+#%ifinclude sys/msg.shi
 
 ########
 # Check for empty variable

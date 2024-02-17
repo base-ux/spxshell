@@ -1,5 +1,5 @@
-#%ifinclude msg.shi
-#%ifinclude cmd.shi
+#%ifinclude sys/msg.shi
+#%ifinclude sys/cmd.shi
 
 ########
 # Check directory availability or create it

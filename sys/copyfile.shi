@@ -1,5 +1,5 @@
-#%ifinclude msg.shi
-#%ifinclude cmd.shi
+#%ifinclude sys/msg.shi
+#%ifinclude sys/cmd.shi
 
 ########
 # Copy single source file to destination file

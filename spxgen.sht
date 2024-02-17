@@ -1,13 +1,29 @@
 #%shebang
 
-SPXGEN_VERSION="7"
+SPXGEN_VERSION="8"
 
 #%prolog
 
 #%include sys/msg.shi
+#%include sys/cmd.shi
 #%include sys/pathabs.shi
 #%include sys/pathcanon.shi
 #%include sys/checkfile.shi
+
+################
+
+#%embed sys/prolog prolog sys/prolog
+#%embed sys/msg.shi msg sys/msg.shi
+#%embed sys/cmd.shi cmd sys/cmd.shi
+#%embed sys/findcmd.shi findcmd sys/findcmd.shi
+#%embed sys/checkdir.shi checkdir sys/checkdir.shi
+#%embed sys/checkfile.shi checkfile sys/checkfile.shi
+#%embed sys/checklock.shi checklock sys/checklock.shi
+#%embed sys/checkvar.shi checkvar sys/checkvar.shi
+#%embed sys/copyfile.shi copyfile sys/copyfile.shi
+#%embed sys/linkfile.shi linkfile sys/linkfile.shi
+#%embed sys/pathabs.shi pathabs sys/pathabs.shi
+#%embed sys/pathcanon.shi pathcanon sys/pathcanon.shi
 
 ################
 
@@ -21,10 +37,12 @@ SPXGEN_VERSION="7"
 # PLIST is used as filenames list of the processed files for '#%ifinclude' directive
 # CURFILE is currently processing filename
 # CURLINE is currently read line in CURFILE
+# EMBEDMAP is '[id:function]' map for embedded functions
 PSTACK=""
 PLIST=""
 CURFILE=""
 CURLINE=""
+: ${EMBEDMAP:=""}
 
 ####
 
@@ -101,19 +119,16 @@ output_line ()
     printf "%s\n" "$*" >&3
 }
 
-####
-
-# Process 'include' directives
-include_file ()
+# Search file available for processing
+search_file ()
 {
     local _f="$1"
-    local _flag="$2"
     local _if=""
-    local _cf=""
 
     case "${_f}" in
 	(    /*  ) _if="$(absolute_path "${_f}")" ;;
 	( '$R/'* ) _if="$(absolute_path "${_f#"\$R/"}" "${ROOTDIR}")" ;;
+	( '$S/'* ) _if="${_f#"\$S/"}" ; _if="${_if:+"embed:${_if}"}" ;;
 	( * )
 	    {
 		# First check path relative to CURFILE
@@ -122,64 +137,102 @@ include_file ()
 	    } ||
 	    {
 		# Second check path relative to ROOTDIR
+		test "${ROOTDIR}" != "${CURFILE%/*}"		&&
 		_if="$(absolute_path "${_f}" "${ROOTDIR}")"	&&
 		test -f "${_if}"
 	    } ||
 	    {
-		err "can't include file '${_f}'"
+		# Third check embedded functions
+		test -n "${EMBEDMAP}" &&
+		case "${EMBEDMAP}" in
+		    ( *"[${_f}:"*"]" ) _if="embed:${_f}" ;;
+		    ( * ) false ;;
+		esac
+	    } ||
+	    {
+		err "can't find file '${_f}'"
 		return 1
 	    }
 	    ;;
     esac
-    if test -n "${_flag}" ; then
-	# If conditional include check if file was included already
-	_cf="$(canonical_path "${_if}")"	&&
-	case "|${PLIST}|" in
-	    ( *"|${_cf}|"* ) return ;;
-	esac
-    fi
-    process_file "${_if}"
+    test -n "${_if}" && printf "%s" "${_if}" || return 1
+}
+
+# Create embed function definition
+add_embed ()
+{
+    local _id="$1"	# Id for embed map
+    local _fn="$2"	# Function name
+    local _f="$3"	# File to read
+    local _ef=""
+    local _efn=""
+
+    # Check function name
+    case "${_fn}" in
+	( *[![:alnum:]_]* )
+	    err "incorrect function name in '#%embed' directive"
+	    return 1
+	    ;;
+    esac
+    test -n "${EMBEDMAP}" &&
+    case "${EMBEDMAP}" in
+	( *"[${_id}:"*"]"* )	# Check for duplicates
+	    err "duplicate embedding for id '${_id}'"
+	    return 1
+	    ;;
+	( *"["*":${_fn}]"* )	# Check if function already defined
+	    output_line "EMBEDMAP=\"\${EMBEDMAP}[${_id}:${_fn}]\""
+	    EMBEDMAP="${EMBEDMAP}[${_id}:${_fn}]"
+	    EMBFLAG="true"
+	    return 0
+	    ;;
+    esac
+
+    # Determine the source for embedding
+    _ef="$(search_file "${_f}")" || return 1
+    case "${_ef}" in
+	( "embed:"* )
+	    _efn="${EMBEDMAP##*"[${_ef#"embed:"}:"}" ; _efn="${_efn%%"]"*}"
+	    if ! command -v "embed_${_efn}" >/dev/null ; then
+		err "embedding function 'embed_${_efn}' is not defined"
+		return 1
+	    fi
+	    ;;
+    esac
+
+    # Output embed function definition
+    cat << EOF >&3
+embed_${_fn} ()
+{
+    cat << 'END_${_fn}'
+$(test -n "${_efn}" && embed_${_efn} || cmd cat "${_ef}")
+END_${_fn}
+}
+EMBEDMAP="\${EMBEDMAP}[${_id}:${_fn}]"
+
+EOF
+
+    # Add embedding information to EMBEDMAP
+    EMBEDMAP="${EMBEDMAP}[${_id}:${_fn}]"
+    EMBFLAG="true"
+
 }
 
 ####
 
-# Process '#%shebang' directive
-do_shebang ()
+# Process '#%embed' directive
+do_embed ()
 {
-    case "${CURLINE}" in
-	( *[[:space:]][![:space:]]* )
-	    err "no parameters allowed for '#%shebang' directive"
-	    return 1
-	    ;;
-    esac
-    output_line "#!/bin/sh"	# The only option for now
-}
+    local _id=""
+    local _fn=""
 
-# Process '#%prolog' directive
-do_prolog ()
-{
-    local _f=""
-
-    case "${CURLINE}" in
-	( *[[:space:]][![:space:]]* )
-	    err "no parameters allowed for '#%prolog' directive"
-	    return 1
-	    ;;
-    esac
-    _f="$(absolute_path "sys/prolog" "${CURFILE%/*}")"
-    if test -f "${_f}" ; then
-	process_file "${_f}"
-    else
-	embed_prolog >&3
+    set -- ${CURLINE##'#%embed'}
+    if test $# -lt 3 ; then
+	err "no required parameters set for '#%embed' directive"
+	return 1
     fi
-}
-
-# Embedded prolog code
-embed_prolog ()
-{
-    cat << 'EOF'
-#%prolog
-EOF
+    _id="$1" ; _fn="$2" ; shift 2
+    add_embed "${_id}" "${_fn}" "$*"
 }
 
 # Process '#%include' directive
@@ -192,9 +245,8 @@ do_include ()
 	err "no parameters set for '#%include' directive"
 	return 1
     fi
-    for _f in "$@" ; do
-	include_file "${_f}" || return 1
-    done
+    _f="$(search_file "$*")" || return 1
+    process_file "${_f}"
 }
 
 # Process '#%ifinclude' directive
@@ -208,9 +260,44 @@ do_ifinclude ()
 	err "no parameters set for '#%ifinclude' directive"
 	return 1
     fi
-    for _f in "$@" ; do
-	include_file "${_f}" "true" || return 1
-    done
+    {
+	_f="$(search_file "$*")"	&&
+	case "${_f}" in
+	    ( "embed:"* ) _cf="${_f}" ;;
+	    ( * ) _cf="$(canonical_path "${_f}")" ;;
+	esac				&&
+	case "|${PLIST}|" in
+	    ( *"|${_cf}|"* ) return 0 ;;
+	esac
+    } || return 1
+    process_file "${_f}"
+}
+
+# Process '#%prolog' directive
+do_prolog ()
+{
+    local _f=""
+
+    case "${CURLINE}" in
+	( *[[:space:]][![:space:]]* )
+	    err "no parameters allowed for '#%prolog' directive"
+	    return 1
+	    ;;
+    esac
+    _f="$(search_file "sys/prolog")" || return 1
+    process_file "${_f}"
+}
+
+# Process '#%shebang' directive
+do_shebang ()
+{
+    case "${CURLINE}" in
+	( *[[:space:]][![:space:]]* )
+	    err "no parameters allowed for '#%shebang' directive"
+	    return 1
+	    ;;
+    esac
+    output_line "#!/bin/sh"	# The only option for now
 }
 
 # Process '#%version' directive
@@ -229,11 +316,12 @@ do_version ()
 do_directive ()
 {
     case "${CURLINE}" in
-	( '#%shebang'   | '#%shebang'[[:space:]]*   )	do_shebang   || return 1 ;;
-	( '#%prolog'    | '#%prolog'[[:space:]]*    )	do_prolog    || return 1 ;;
-	( '#%include'   | '#%include'[[:space:]]*   )	do_include   || return 1 ;;
-	( '#%ifinclude' | '#%ifinclude'[[:space:]]* )	do_ifinclude || return 1 ;;
-	( '#%version'   | '#%version'[[:space:]]*   )	do_version   || return 1 ;;
+	( '#%embed'     | '#%embed'[[:space:]]*     ) do_embed     || return 1 ;;
+	( '#%ifinclude' | '#%ifinclude'[[:space:]]* ) do_ifinclude || return 1 ;;
+	( '#%include'   | '#%include'[[:space:]]*   ) do_include   || return 1 ;;
+	( '#%prolog'    | '#%prolog'[[:space:]]*    ) do_prolog    || return 1 ;;
+	( '#%shebang'   | '#%shebang'[[:space:]]*   ) do_shebang   || return 1 ;;
+	( '#%version'   | '#%version'[[:space:]]*   ) do_version   || return 1 ;;
 	( * )
 	    err "unknown directive '${CURLINE%%[[:space:]]*}'"
 	    return 1
@@ -246,15 +334,17 @@ do_directive ()
 # Read file
 read_file ()
 {
+    local _rfile="$1"
     local _ln=0
 
+    EMBFLAG=""	# Reset 'global' flag (will be set in 'add_embed')
     while IFS= read -r CURLINE ; do
 	_ln="$(( ${_ln} + 1 ))"
 	case "${CURLINE}" in
 	    ( '#%'* )
 		do_directive ||
 		{
-		    err "processing error in file '${CURFILE}' at line ${_ln}"
+		    err "processing error in file '${_rfile:-${CURFILE}}' at line ${_ln}"
 		    return 1
 		}
 		;;
@@ -264,31 +354,66 @@ read_file ()
 
     # As 'read_file' is executed in subshell there is a way to hand over
     # variables to 'upstream' 'process_file' function
-    printf 'PLIST="%s"' "${PLIST}"
+    if test -n "${EMBFLAG}" ; then
+	printf 'PLIST="%s" ; EMBEDMAP="%s"' "${PLIST}" "${EMBEDMAP}"
+    else
+	printf 'PLIST="%s"' "${PLIST}"
+    fi
 }
 
 # Process file
 process_file ()
 {
-    local _file="$1"
+    local _pfile="$1"
     local _cfile=""
+    local _id=""
+    local _fn=""
     local _ret=""
 
-    # Check file
-    check_file "${_file}" || return 1
+    case "${_pfile}" in
+	( "embed:"* )
+	    # Check embedded function
+	    _cfile="${_pfile}"
+	    _id="${_pfile#"embed:"}"
+	    test -n "${EMBEDMAP}" &&
+	    case "${EMBEDMAP}" in
+		( *"[${_id}:"*"]" )
+		    _fn="${EMBEDMAP##*"[${_id}:"}" ; _fn="${_fn%%"]"*}"
+		    if ! command -v "embed_${_fn}" >/dev/null ; then
+			err "embedding function 'embed_${_fn}' is not defined"
+			return 1
+		    fi
+		    ;;
+		( * )
+		    err "can't find embedded id '${_id}'"
+		    return 1
+		    ;;
+	    esac
+	    ;;
+	( * )
+	    # Check file
+	    {
+		check_file "${_pfile}"	&&
+		_cfile="$(canonical_path "${_pfile}")"
+	    } || return 1
+	    ;;
+    esac
 
     # Add canonical file name to stack (for cyclic include determination)
-    _cfile="$(canonical_path "${_file}")" || return 1
     case "|${PSTACK}|" in
 	( *"|${_cfile}|"* )
-	    err "cyclic include of file '${_file}'"
+	    err "cyclic include of file '${_pfile}'"
 	    return 1
 	    ;;
 	( * ) PSTACK="${PSTACK:+"${PSTACK}|"}${_cfile}" ;;
     esac
 
     # Read file
-    _ret="$(CURFILE="${_file}" ; cmd cat "${CURFILE}" | read_file)"
+    if test -n "${_fn}" ; then
+	_ret="$(embed_${_fn} | read_file "${_pfile}")"
+    else
+	_ret="$(CURFILE="${_pfile}" ; cmd cat "${CURFILE}" | read_file)"
+    fi
     test -n "${_ret}" && eval "${_ret}" || return 1
 
     # Remove from file names stack
