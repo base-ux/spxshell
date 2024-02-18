@@ -1,6 +1,6 @@
 #%shebang
 
-SPXGEN_VERSION="9"
+SPXGEN_VERSION="10"
 
 #%prolog
 
@@ -32,6 +32,8 @@ SPXGEN_VERSION="9"
 : ${SRCFILE:=""}		# Source file
 : ${OUTFILE:="/dev/stdout"}	# Default output to stdout
 : ${ROOTDIR:=""}		# Base directory to search include files
+: ${PROLOG:="sys/prolog"}	# Default prolog file
+: ${SHEBANG:="#!/bin/sh"}	# Default shebang string
 
 # PSTACK is used as filenames stack for 'process_file' function
 # PLIST is used as filenames list of the processed files for '#%ifinclude' directive
@@ -50,7 +52,7 @@ CURLINE=""
 usage ()
 {
     cat << EOF
-Usage: ${PROG} [-o outfile] [-R basedir] inputfile
+Usage: ${PROG} [-o outfile] [-P prolog] [-R basedir] [-S shebang] inputfile
 EOF
 }
 
@@ -61,7 +63,9 @@ usage_help ()
     cat << EOF
 
     -o outfile	output file name
+    -P prolog	use 'prolog' file instead of default 'sys/prolog'
     -R basedir	base directory to search include files
+    -S shebang	use 'shebang' string instead of default '#!/bin/sh'
 
     inputfile	input file name
 EOF
@@ -76,10 +80,12 @@ get_options ()
     local _opt=""
 
     case "$1" in ( '-?' | '-help' | '--help' ) usage_help ;; esac
-    while getopts ":o:R:" _opt ; do
+    while getopts ":o:P:R:S:" _opt ; do
 	case "${_opt}" in
 	    ( 'o' ) OUTFILE="${OPTARG}" ;;
+	    ( 'P' ) PROLOG="${OPTARG}"  ;;
 	    ( 'R' ) ROOTDIR="${OPTARG}" ;;
+	    ( 'S' ) SHEBANG="${OPTARG}" ;;
 	    ( ':' )
 		err "missing argument for option -- '${OPTARG}'"
 		usage
@@ -284,7 +290,7 @@ do_prolog ()
 	    return 1
 	    ;;
     esac
-    _f="$(search_file "sys/prolog")" || return 1
+    _f="$(search_file "${PROLOG}")" || return 1
     process_file "${_f}"
 }
 
@@ -297,7 +303,7 @@ do_shebang ()
 	    return 1
 	    ;;
     esac
-    output_line "#!/bin/sh"	# The only option for now
+    output_line "${SHEBANG}"
 }
 
 # Process '#%version' directive
@@ -437,6 +443,8 @@ startup ()
     ROOTDIR="${ROOTDIR:+"$(absolute_path "${ROOTDIR}")"}"
     SRCFILE="$(absolute_path "${SRCFILE}")"	&&
     : ${ROOTDIR:="${SRCFILE%/*}"}		&&
+    test -n "${PROLOG}"				&&
+    test -n "${SHEBANG}"			&&
     OUTFILE="$(absolute_path "${OUTFILE}")"	&&
     exec 3> "${OUTFILE}"
 }
