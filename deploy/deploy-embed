@@ -94,7 +94,7 @@ extract ()
     if test -n "${chksum_cmd}" ; then
 	_md5="$(chksum_${chksum_cmd} "${ARCHFILE}")"
 	_md5="${_md5%%[[:space:]]*}"
-	if test "${MD5SUM}" != "${_md5}" ; then
+	if test -n "${_md5}" && test "${MD5SUM}" != "${_md5}" ; then
 	    err "incorrect checksum for file '${ARCHFILE}'"
 	    return 1
 	fi
