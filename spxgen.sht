@@ -411,7 +411,7 @@ process_file ()
 	    err "cyclic include of file '${_pfile}'"
 	    return 1
 	    ;;
-	( * ) PSTACK="${PSTACK:+"${PSTACK}|"}${_cfile}" ;;
+	( * ) PSTACK="${PSTACK:+"${PSTACK}\|"}${_cfile}" ;;
     esac
 
     # Read file
@@ -423,15 +423,15 @@ process_file ()
     test -n "${_ret}" && eval "${_ret}" || return 1
 
     # Remove from file names stack
-    _cfile="${PSTACK##*"|"}"	# Restore _cfile
+    _cfile="${PSTACK##*"\|"}"	# Restore _cfile
     PSTACK="${PSTACK%"${_cfile}"*}"
-    PSTACK="${PSTACK%"|"*}"	# Remove trailing bar
+    PSTACK="${PSTACK%"\|"*}"	# Remove trailing bar
 
     # Add canonical file name to the list of processed files
     # which is used in conditional '#%ifinclude' directive
     case " ${PLIST} " in
 	( *"|${_cfile}|"* ) ;;
-	( * ) PLIST="${PLIST:+"${PLIST}|"}${_cfile}" ;;
+	( * ) PLIST="${PLIST:+"${PLIST}\|"}${_cfile}" ;;
     esac
 }
 
@@ -440,7 +440,7 @@ process_file ()
 # Initialization subroutine
 startup ()
 {
-    ROOTDIR="${ROOTDIR:+"$(absolute_path "${ROOTDIR}")"}"
+    ROOTDIR="${ROOTDIR:+$(absolute_path "${ROOTDIR}")}"
     SRCFILE="$(absolute_path "${SRCFILE}")"	&&
     : ${ROOTDIR:="${SRCFILE%/*}"}		&&
     test -n "${PROLOG}"				&&
