@@ -1,6 +1,6 @@
 #%shebang
 
-SPXGEN_VERSION="10"
+SPXGEN_VERSION="11"
 
 #%prolog
 
@@ -474,6 +474,7 @@ fail ()
 # Main subroutine
 main ()
 {
+    set -o noglob
     get_options "$@" && startup || fail
     trap 'clean_fail 130' HUP INT TERM
     process_file "${SRCFILE}" || clean_fail
