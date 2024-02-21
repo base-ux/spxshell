@@ -1,0 +1,63 @@
+#%ifinclude sys/msg
+
+########
+# Initialize variables
+# Arguments:
+#   $@  variables names
+# Return:
+#    0  no errors
+#    1  error
+#   none
+# Input:
+#   none
+# Output:
+#   none
+########
+
+var_init ()
+{
+    local _v=""
+
+    for _v in ${1+"$@"} ; do
+	# Check variable name
+	case "${_v}" in
+	    ( [![:alpha:]_]* | [[:alpha:]_]*[![:alnum:]_]* )
+		err "illegal variable name: '${_v}'"
+		return 1 ;;
+	esac
+	# Unset prefixed variables
+	eval unset DEF_${_v} ENV_${_v} OPT_${_v}
+	# Save environment variable
+	eval ": \"\${${_v}+\${ENV_${_v}=\${${_v}}}}\""
+    done
+}
+
+########
+# Set variables with priority processing
+# Arguments:
+#   $@  variables names
+# Return:
+#    0  no errors
+#    1  error
+#   none
+# Input:
+#   none
+# Output:
+#   none
+########
+
+var_set ()
+{
+    local _v=""
+
+    for _v in ${1+"$@"} ; do
+	# Check variable name
+	case "${_v}" in
+	    ( [![:alpha:]_]* | [[:alpha:]_]*[![:alnum:]_]* )
+		err "illegal variable name: '${_v}'"
+		return 1 ;;
+	esac
+	# Set variable with priority (OPT -> ENV -> DEF)
+	eval ${_v}=\"\${OPT_${_v}-\${ENV_${_v}-\${DEF_${_v}}}}\"
+    done
+}
