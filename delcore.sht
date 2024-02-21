@@ -1,0 +1,103 @@
+#%shebang
+#%version 1
+#
+# Delete core files
+#
+
+#%prolog
+
+################
+
+#%include sys/msg
+#%include sys/cmd
+#%include sys/vars
+
+################
+
+# Print usage information
+usage ()
+{
+    cat << EOF
+Usage: ${PROG} [-d dir]...
+EOF
+}
+
+# Print help information
+usage_help ()
+{
+    usage
+    cat << EOF
+
+    Find and delete files named 'core' in specified directories
+
+    -d dir	Directory for processing. This option can be used multiple
+		times (-d dir1 -d dir2) or several directories can be listed
+		separated by colon (-d dir1:dir2).
+EOF
+    exit 0
+}
+
+####
+
+# Parse command line options
+get_options ()
+{
+    local _opt=""
+
+    case "$1" in ( '-?' | '-help' | '--help' ) usage_help ;; esac
+    while getopts :d: _opt ; do
+	case "${_opt}" in
+	    ( 'd' ) OPT_DELCORE_DIRS="${OPT_DELCORE_DIRS:+${OPT_DELCORE_DIRS}:}${OPTARG}" ;;
+	    ( ':' )
+		err "missing argument for option -- '${OPTARG}'"
+		usage ; return 1 ;;
+	    ( '?' )
+		err "unknown option -- '${OPTARG}'"
+		usage ; return 1 ;;
+	    (  *  )
+		err "no handler for option '${_opt}'"
+		return 1 ;;
+	esac
+    done
+    shift $((${OPTIND} - 1))
+    if test $# -ne 0 ; then
+	err "too many arguments"
+	usage
+	return 1
+    fi
+}
+
+####
+
+# Delete core files
+delcore ()
+{
+    local _dir=""
+    local _ifs=""
+
+    if test -n "${DELCORE_DIRS}" ; then
+	_ifs="${IFS}" ; IFS=":"		# Save IFS and set to ':'
+	for _dir in ${DELCORE_DIRS} ; do
+	    if test -d "${_dir}" ; then
+		cmd find -H ${_dir} -xdev -type f -name core -exec rm -f {} \+
+	    fi
+	done
+	IFS="${_ifs}"			# Restore IFS
+    fi
+}
+
+####
+
+# Main subroutine
+main ()
+{
+    {
+	var_init DELCORE_DIRS	&&
+	get_options "$@"	&&
+	var_set  DELCORE_DIRS	&&
+	delcore
+    } || return 1
+}
+
+# Call main subroutine
+main "$@"

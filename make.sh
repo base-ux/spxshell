@@ -2,7 +2,7 @@
 
 # Set variables
 PRODUCT="spxshell"
-VERSION="0.6.2"
+VERSION="0.7.0"
 
 PROG="$(basename -- "$0")"
 
@@ -18,6 +18,7 @@ SPXGEN_BS="${OUTDIR}/spxgen-bs.sh"
 SPXGEN="${OUTDIR}/spxgen.sh"
 MKDEPLOY="${OUTDIR}/mkdeploy.sh"
 INSTALL="${OUTDIR}/install.sh"
+DELCORE="${OUTDIR}/delcore.sh"
 
 SPXBSSRCS="
 sys/prolog
@@ -30,6 +31,7 @@ spxgen.sht
 "
 
 SRCS="
+delcore.sht
 install.sht
 mkdeploy.sht
 "
@@ -82,7 +84,7 @@ deploy ()
 	-o "${OUTDIR}/${PRODUCT}-v${VERSION}.sh" \
 	-P "${PRODUCT}" -V "${VERSION}" \
 	-i "${INSTALL}" \
-	-f "${MKDEPLOY} ${SPXGEN}" \
+	-f "${DELCORE} ${MKDEPLOY} ${SPXGEN}" \
     || return 1
 }
 

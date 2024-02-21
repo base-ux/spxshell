@@ -1,5 +1,5 @@
 #%shebang
-#%version 2
+#%version 3
 #
 # Installation script
 #
@@ -17,6 +17,7 @@
 SRCDIR="$(cd -- "$(dirname -- "$0")" ; pwd)"
 
 SRCFILES="
+delcore.sh
 mkdeploy.sh
 spxgen.sh
 "
