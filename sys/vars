@@ -18,13 +18,16 @@ var_init ()
 {
     local _v=""
 
-    for _v in ${1+"$@"} ; do
-	# Check variable name
-	case "${_v}" in
-	    ( [![:alpha:]_]* | [[:alpha:]_]*[![:alnum:]_]* )
-		err "illegal variable name: '${_v}'"
-		return 1 ;;
-	esac
+    for _v in "$@" ; do
+	(
+	    # Check variable name in POSIX locale
+	    LC_ALL=C
+	    case "${_v}" in
+		( [![:alpha:]_]* | [[:alpha:]_]*[![:alnum:]_]* )
+		    err "illegal variable name: '${_v}'"
+		    false ;;
+	    esac
+	) || return 1
 	# Unset prefixed variables
 	eval unset DEF_${_v} ENV_${_v} OPT_${_v}
 	# Save environment variable
@@ -50,13 +53,16 @@ var_set ()
 {
     local _v=""
 
-    for _v in ${1+"$@"} ; do
-	# Check variable name
-	case "${_v}" in
-	    ( [![:alpha:]_]* | [[:alpha:]_]*[![:alnum:]_]* )
-		err "illegal variable name: '${_v}'"
-		return 1 ;;
-	esac
+    for _v in "$@" ; do
+	(
+	    # Check variable name in POSIX locale
+	    LC_ALL=C
+	    case "${_v}" in
+		( [![:alpha:]_]* | [[:alpha:]_]*[![:alnum:]_]* )
+		    err "illegal variable name: '${_v}'"
+		    false ;;
+	    esac
+	) || return 1
 	# Set variable with priority (OPT -> ENV -> DEF)
 	eval ${_v}=\"\${OPT_${_v}-\${ENV_${_v}-\${DEF_${_v}}}}\"
     done
