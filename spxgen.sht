@@ -1,6 +1,6 @@
 #%shebang
 
-SPXGEN_VERSION="13"
+SPXGEN_VERSION="14"
 
 #%prolog
 
@@ -44,7 +44,7 @@ PSTACK=""
 PLIST=""
 CURFILE=""
 CURLINE=""
-: ${EMBEDMAP:=""}
+: "${EMBEDMAP:=}"
 
 ####
 
@@ -133,8 +133,8 @@ search_file ()
 
     case "${_f}" in
 	(    /*  ) _if="$(absolute_path "${_f}")" ;;
-	( '$R/'* ) _if="$(absolute_path "${_f#"\$R/"}" "${ROOTDIR}")" ;;
-	( '$S/'* ) _if="${_f#"\$S/"}" ; _if="${_if:+"embed:${_if}"}" ;;
+	( '$R/'* ) _if="$(absolute_path "${_f#\$R/}" "${ROOTDIR}")" ;;
+	( '$S/'* ) _if="${_f#\$S/}" ; _if="${_if:+embed:${_if}}" ;;
 	( * )
 	    {
 		# First check path relative to CURFILE
@@ -198,7 +198,7 @@ add_embed ()
     _ef="$(search_file "${_f}")" || return 1
     case "${_ef}" in
 	( "embed:"* )
-	    _efn="${EMBEDMAP##*"[${_ef#"embed:"}:"}" ; _efn="${_efn%%"]"*}"
+	    _efn="${EMBEDMAP##*"[${_ef#embed:}:"}" ; _efn="${_efn%%"]"*}"
 	    if ! command -v "embed_${_efn}" >/dev/null ; then
 		err "embedding function 'embed_${_efn}' is not defined"
 		return 1
@@ -380,7 +380,7 @@ process_file ()
 	( "embed:"* )
 	    # Check embedded function
 	    _cfile="${_pfile}"
-	    _id="${_pfile#"embed:"}"
+	    _id="${_pfile#embed:}"
 	    test -n "${EMBEDMAP}" &&
 	    case "${EMBEDMAP}" in
 		( *"[${_id}:"*"]" )
@@ -442,7 +442,7 @@ startup ()
 {
     ROOTDIR="${ROOTDIR:+$(absolute_path "${ROOTDIR}")}"
     SRCFILE="$(absolute_path "${SRCFILE}")"	&&
-    : ${ROOTDIR:="${SRCFILE%/*}"}		&&
+    : "${ROOTDIR:=${SRCFILE%/*}}"		&&
     test -n "${PROLOG}"				&&
     test -n "${SHEBANG}"			&&
     OUTFILE="$(absolute_path "${OUTFILE}")"	&&

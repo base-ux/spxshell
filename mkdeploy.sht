@@ -1,5 +1,5 @@
 #%shebang
-#%version 4
+#%version 5
 
 #%prolog
 
@@ -25,7 +25,7 @@
 : ${PRODUCT:=""}
 : ${VERSION:=""}
 
-: ${WORKDIR:=/tmp/${PROG}.$$}
+: "${WORKDIR:=/tmp/${PROG}.$$}"
 
 MD5SUM=""
 

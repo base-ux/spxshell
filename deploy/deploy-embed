@@ -6,7 +6,7 @@ embed_deploy ()
 {
     cat << 'BEGIN' ; cat << PARAMS ; cat << 'MAIN' ; cat << BLOB ; cat << 'END'
 #%shebang
-#%version 4
+#%version 5
 
 BEGIN
 ### Deploy parameters
@@ -33,7 +33,7 @@ PARAMS
 ################
 
 # Set variables
-: ${XDG_CACHE_HOME:="${HOME}/.cache"}
+: "${XDG_CACHE_HOME:=${HOME}/.cache}"
 
 BASEDIR="${XDG_CACHE_HOME}/spxshell/deploy"
 DEPLOYDIR="${BASEDIR}/${MD5SUM:-none}"
@@ -50,8 +50,6 @@ INITFILE="${XDIR}/${INITFILE}"
 # Initialization subroutine
 startup ()
 {
-    local _umask=""
-
     # Check binaries
     # Extract
     decode_cmd="$(find_command uudecode base64 openssl)"
@@ -69,14 +67,12 @@ startup ()
     test -n "${MD5SUM}" && chksum_cmd="$(find_command md5sum openssl)"
 
     # Check directories
-    {
-	_umask="$(umask)"	# Save umask value
+    (
 	umask 0077		# Create only user accessible directories
 	check_dir "${DEPLOYDIR}" &&
 	check_dir "${EDIR}"      &&
-	check_dir "${XDIR}"      &&
-	umask "${_umask}"	# Restore umask
-    } || return 1
+	check_dir "${XDIR}"
+    ) || return 1
 
     # Check lock file
     check_lock "${LOCKFILE}"  || return 1
