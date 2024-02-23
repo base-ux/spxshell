@@ -1,5 +1,5 @@
 #%shebang
-#%version 7
+#%version 8
 
 #%prolog
 
@@ -132,6 +132,7 @@ cpdeploy ()
 # Initialization subroutine
 init ()
 {
+    set -o noglob	# Do not expand pathnames
     # Initialize variables
     var_init FILELIST INITFILE OUTDIR  OUTFILE \
 	     PRODUCT  SRCDIR   VERSION WORKDIR &&
@@ -196,11 +197,15 @@ startup ()
     fi
 
     # Check files and convert to relative paths
-    for _f in ${FILELIST} ${INITFILE} ; do
+    eval set -- ${FILELIST} \"${INITFILE}\"
+    for _f in "$@" ; do
 	case "${_f}" in
 	    ( /* ) _f="${_f#"${SRCDIR}/"}" ;;
 	esac
 	check_file "${SRCDIR}/${_f}" || return 1
+	case "${_f}" in
+	    ( *[[:space:]]* ) _f="\"${_f}\"" ;;
+	esac
 	_flist="${_flist:+"${_flist} "}${_f}"
     done
     FILELIST="${_flist}"
