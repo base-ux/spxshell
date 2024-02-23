@@ -1,7 +1,9 @@
 #%shebang
-#%version 6
+#%version 7
 
 #%prolog
+
+################
 
 #%include sys/msg
 #%include sys/cmd
@@ -9,27 +11,12 @@
 #%include sys/checkfile
 #%include sys/checkdir
 #%include sys/checkvar
+#%include sys/vars
 #%include deploy/checksum
 #%include deploy/encode
 #%include deploy/pack
 
 ################
-
-# Set variables
-
-: ${SRCDIR:="$(pwd)"}
-: ${OUTDIR:="$(pwd)"}
-: ${OUTFILE:="deploy.sh"}
-: ${FILELIST:=""}
-: ${INITFILE:=""}
-: ${PRODUCT:=""}
-: ${VERSION:=""}
-
-: "${WORKDIR:=/tmp/${PROG}.$$}"
-
-MD5SUM=""
-
-####
 
 # Print usage information
 usage ()
@@ -68,14 +55,14 @@ get_options ()
     case "$1" in ( '-?' | '-help' | '--help' ) usage_help ;; esac
     while getopts ":d:f:i:o:s:w:P:V:" _opt ; do
 	case "${_opt}" in
-	    ( 'd' ) OUTDIR="${OPTARG}"   ;;
-	    ( 'i' ) INITFILE="${OPTARG}" ;;
-	    ( 'o' ) OUTFILE="${OPTARG}"  ;;
-	    ( 's' ) SRCDIR="${OPTARG}"   ;;
-	    ( 'w' ) WORKDIR="${OPTARG}"  ;;
-	    ( 'P' ) PRODUCT="${OPTARG}"  ;;
-	    ( 'V' ) VERSION="${OPTARG}"  ;;
-	    ( 'f' ) FILELIST="${FILELIST:+"${FILELIST} "}${OPTARG}" ;;
+	    ( 'd' ) OPT_OUTDIR="${OPTARG}"   ;;
+	    ( 'i' ) OPT_INITFILE="${OPTARG}" ;;
+	    ( 'o' ) OPT_OUTFILE="${OPTARG}"  ;;
+	    ( 's' ) OPT_SRCDIR="${OPTARG}"   ;;
+	    ( 'w' ) OPT_WORKDIR="${OPTARG}"  ;;
+	    ( 'P' ) OPT_PRODUCT="${OPTARG}"  ;;
+	    ( 'V' ) OPT_VERSION="${OPTARG}"  ;;
+	    ( 'f' ) OPT_FILELIST="${OPT_FILELIST:+"${OPT_FILELIST} "}${OPTARG}" ;;
 	    ( ':' )
 		err "missing argument for option -- '${OPTARG}'"
 		usage
@@ -145,7 +132,23 @@ cpdeploy ()
 # Initialization subroutine
 init ()
 {
-    get_options "$@"
+    # Initialize variables
+    var_init FILELIST INITFILE OUTDIR  OUTFILE \
+	     PRODUCT  SRCDIR   VERSION WORKDIR &&
+    {
+	# Set defaults
+	DEF_OUTDIR="$(pwd)"
+	DEF_OUTFILE="deploy.sh"
+	DEF_SRCDIR="$(pwd)"
+	DEF_WORKDIR="/tmp/${PROG}.$$"
+	# Define 'internal' variables
+	MD5SUM=""
+    } &&
+    # Get options
+    get_options "$@"	&&
+    # Set variables
+    var_set  FILELIST INITFILE OUTDIR  OUTFILE \
+	     PRODUCT  SRCDIR   VERSION WORKDIR
 }
 
 # Startup subroutine

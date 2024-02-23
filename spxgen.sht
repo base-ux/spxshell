@@ -1,6 +1,6 @@
 #%shebang
 
-SPXGEN_VERSION="16"
+SPXGEN_VERSION="17"
 
 #%prolog
 
@@ -9,6 +9,7 @@ SPXGEN_VERSION="16"
 #%include sys/pathabs
 #%include sys/pathcanon
 #%include sys/checkfile
+#%include sys/vars
 
 ################
 
@@ -27,27 +28,6 @@ SPXGEN_VERSION="16"
 #%embed sys/vars vars sys/vars
 
 ################
-
-# Set variables
-
-: ${SRCFILE:=""}		# Source file
-: ${OUTFILE:="/dev/stdout"}	# Default output to stdout
-: ${ROOTDIR:=""}		# Base directory to search include files
-: ${PROLOG:="sys/prolog"}	# Default prolog file
-: ${SHEBANG:="#!/bin/sh"}	# Default shebang string
-
-# PSTACK is used as filenames stack for 'process_file' function
-# PLIST is used as filenames list of the processed files for '#%ifinclude' directive
-# CURFILE is currently processing filename
-# CURLINE is currently read line in CURFILE
-# EMBEDMAP is '[id:function]' map for embedded functions
-PSTACK=""
-PLIST=""
-CURFILE=""
-CURLINE=""
-: "${EMBEDMAP:=}"
-
-####
 
 # Print usage information
 usage ()
@@ -83,10 +63,10 @@ get_options ()
     case "$1" in ( '-?' | '-help' | '--help' ) usage_help ;; esac
     while getopts ":o:P:R:S:" _opt ; do
 	case "${_opt}" in
-	    ( 'o' ) OUTFILE="${OPTARG}" ;;
-	    ( 'P' ) PROLOG="${OPTARG}"  ;;
-	    ( 'R' ) ROOTDIR="${OPTARG}" ;;
-	    ( 'S' ) SHEBANG="${OPTARG}" ;;
+	    ( 'o' ) OPT_OUTFILE="${OPTARG}" ;;
+	    ( 'P' ) OPT_PROLOG="${OPTARG}"  ;;
+	    ( 'R' ) OPT_ROOTDIR="${OPTARG}" ;;
+	    ( 'S' ) OPT_SHEBANG="${OPTARG}" ;;
 	    ( ':' )
 		err "missing argument for option -- '${OPTARG}'"
 		usage
@@ -109,7 +89,7 @@ get_options ()
 	usage
 	return 1
     elif test $# -eq 1 ; then
-	SRCFILE="$1"
+	OPT_SRCFILE="$1"
     elif test -z "${SRCFILE}" ; then
 	# SRCFILE may be set via environment
 	err "mandatory argument missing"
@@ -441,8 +421,30 @@ process_file ()
 # Initialization subroutine
 init ()
 {
-    set -o noglob
-    get_options "$@"
+    set -o noglob	# Do not expand pathnames
+    # Initialize variables
+    var_init OUTFILE PROLOG ROOTDIR SHEBANG SRCFILE &&
+    {
+	# Set defaults
+	DEF_OUTFILE="/dev/stdout"
+	DEF_PROLOG="sys/prolog"
+	DEF_SHEBANG="#!/bin/sh"
+	# Define 'internal' variables
+	# PSTACK is used as filenames stack for 'process_file' function
+	# PLIST is used as filenames list of the processed files for '#%ifinclude' directive
+	# CURFILE is currently processing filename
+	# CURLINE is currently read line in CURFILE
+	# EMBEDMAP is '[id:function]' map for embedded functions
+	PSTACK=""
+	PLIST=""
+	CURFILE=""
+	CURLINE=""
+	: "${EMBEDMAP:=}"	# Can be set already by embed functions definitions
+    } &&
+    # Get options
+    get_options "$@"	&&
+    # Set variables
+    var_set  OUTFILE PROLOG ROOTDIR SHEBANG SRCFILE
 }
 
 # Startup subroutine
