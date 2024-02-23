@@ -1,6 +1,6 @@
 #%shebang
 
-SPXGEN_VERSION="15"
+SPXGEN_VERSION="16"
 
 #%prolog
 
@@ -24,6 +24,7 @@ SPXGEN_VERSION="15"
 #%embed sys/linkfile linkfile sys/linkfile
 #%embed sys/pathabs pathabs sys/pathabs
 #%embed sys/pathcanon pathcanon sys/pathcanon
+#%embed sys/vars vars sys/vars
 
 ################
 
