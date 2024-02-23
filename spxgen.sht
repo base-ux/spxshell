@@ -1,6 +1,6 @@
 #%shebang
 
-SPXGEN_VERSION="14"
+SPXGEN_VERSION="15"
 
 #%prolog
 
@@ -438,6 +438,13 @@ process_file ()
 ####
 
 # Initialization subroutine
+init ()
+{
+    set -o noglob
+    get_options "$@"
+}
+
+# Startup subroutine
 startup ()
 {
     ROOTDIR="${ROOTDIR:+$(absolute_path "${ROOTDIR}")}"
@@ -474,8 +481,7 @@ fail ()
 # Main subroutine
 main ()
 {
-    set -o noglob
-    get_options "$@" && startup || fail
+    init "$@" && startup || fail
     trap 'clean_fail 130' HUP INT TERM
     process_file "${SRCFILE}" || clean_fail
     cleanup

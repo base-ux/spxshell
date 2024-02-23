@@ -1,5 +1,5 @@
 #%shebang
-#%version 5
+#%version 6
 
 #%prolog
 
@@ -29,9 +29,126 @@
 
 MD5SUM=""
 
-###
+####
+
+# Print usage information
+usage ()
+{
+    cat << EOF
+Usage: ${PROG} [-d destdir] [-f file]... [-i initfile] [-o outfile] [-s srcdir]
+	[-w workdir] [-P product] [-V version]
+EOF
+}
+
+# Print help information
+usage_help ()
+{
+    usage
+    cat << EOF
+
+    -d destdir	where to write output file (default: current directory)
+    -f file	file to add to archive (path relative to srcdir)
+    -i initfile	init-file to execute by deploy after unpacking
+    -o outfile	output file name (either absolute name or relative to destdir)
+    -s srcdir	where to look source files (default: current directory)
+    -w workdir	where to place temporary working files (default: /tmp)
+    -P product	product name to write to deploy file
+    -V version	version of product to write to deploy file
+EOF
+    exit 0
+}
+
+####
+
+# Parse command line options
+get_options ()
+{
+    local _opt=""
+
+    case "$1" in ( '-?' | '-help' | '--help' ) usage_help ;; esac
+    while getopts ":d:f:i:o:s:w:P:V:" _opt ; do
+	case "${_opt}" in
+	    ( 'd' ) OUTDIR="${OPTARG}"   ;;
+	    ( 'i' ) INITFILE="${OPTARG}" ;;
+	    ( 'o' ) OUTFILE="${OPTARG}"  ;;
+	    ( 's' ) SRCDIR="${OPTARG}"   ;;
+	    ( 'w' ) WORKDIR="${OPTARG}"  ;;
+	    ( 'P' ) PRODUCT="${OPTARG}"  ;;
+	    ( 'V' ) VERSION="${OPTARG}"  ;;
+	    ( 'f' ) FILELIST="${FILELIST:+"${FILELIST} "}${OPTARG}" ;;
+	    ( ':' )
+		err "missing argument for option -- '${OPTARG}'"
+		usage
+		return 1
+		;;
+	    ( '?' )
+		err "unknown option -- '${OPTARG}'"
+		usage
+		return 1
+		;;
+	    (  *  )
+		err "no handler for option '${_opt}'"
+		return 1
+		;;
+	esac
+    done
+    shift $((${OPTIND} - 1))
+    if test $# -gt 0 ; then
+	err "too many arguments"
+	usage
+	return 1
+    fi
+}
+
+####
+
+# Create archive
+mkpack ()
+{
+    if ! pack_${pack_cmd} "${W_ARCH}" "${SRCDIR}" "${FILELIST}" ; then
+	err "can't pack file '${W_ARCH}'"
+	return 1
+    fi
+    if test -n "${chksum_cmd}" ; then
+	MD5SUM="$(chksum_${chksum_cmd} "${W_ARCH}")"
+	MD5SUM="${MD5SUM%%[[:space:]]*}"
+    fi
+}
+
+# Create blob
+mkblob ()
+{
+    if ! cat "${W_ARCH}" | encode_${encode_cmd} "${W_BLOB}" ; then
+	err "can't encode file '${W_ARCH}'"
+	return 1
+    fi
+}
+
+# Generate deploy script
+mkdeploy ()
+{
+    embed_deploy > "${W_OUT}"
+}
+
+# Copy generated deploy script
+cpdeploy ()
+{
+    cmd cp "${W_OUT}" "${OUTFILE}"
+    if test $? -ne 0 ; then
+	err "can't copy file '${W_OUT}' to file '${OUTFILE}'"
+	return 1
+    fi
+}
+
+####
 
 # Initialization subroutine
+init ()
+{
+    get_options "$@"
+}
+
+# Startup subroutine
 startup ()
 {
     local _f=""
@@ -87,50 +204,12 @@ startup ()
     INITFILE="${INITFILE#"${SRCDIR}/"}"	# In the case of absolute path
 
     # Check working directory
-    check_dir "${WORKDIR}" || return 1
+    ( umask 0077 ; check_dir "${WORKDIR}" ) || return 1
 
     # Set working filenames
     W_ARCH="${WORKDIR}/archive.pax"
     W_BLOB="${WORKDIR}/blob"
     W_OUT="${WORKDIR}/out.sh"
-}
-
-# Create archive
-mkpack ()
-{
-    if ! pack_${pack_cmd} "${W_ARCH}" "${SRCDIR}" "${FILELIST}" ; then
-	err "can't pack file '${W_ARCH}'"
-	return 1
-    fi
-    if test -n "${chksum_cmd}" ; then
-	MD5SUM="$(chksum_${chksum_cmd} "${W_ARCH}")"
-	MD5SUM="${MD5SUM%%[[:space:]]*}"
-    fi
-}
-
-# Create blob
-mkblob ()
-{
-    if ! cat "${W_ARCH}" | encode_${encode_cmd} "${W_BLOB}" ; then
-	err "can't encode file '${W_ARCH}'"
-	return 1
-    fi
-}
-
-# Generate deploy script
-mkdeploy ()
-{
-    embed_deploy > "${W_OUT}"
-}
-
-# Copy generated deploy script
-cpdeploy ()
-{
-    cmd cp "${W_OUT}" "${OUTFILE}"
-    if test $? -ne 0 ; then
-	err "can't copy file '${W_OUT}' to file '${OUTFILE}'"
-	return 1
-    fi
 }
 
 # Clean working directory
@@ -144,92 +223,26 @@ cleanup ()
     fi
 }
 
-# Exit with error code
-fail ()
-{
-    exit 1
-}
-
 # Clean up the staff and exit with error
 clean_fail ()
 {
     cleanup
-    fail
+    fail "${1:-1}"
 }
 
-###
-
-usage ()
+# Exit with error code
+fail ()
 {
-    cat << EOF
-Usage: ${PROG} [-d destdir] [-f file]... [-i initfile] [-o outfile] [-s srcdir]
-	[-w workdir] [-P product] [-V version]
-EOF
+    exit "${1:-1}"
 }
 
-usage_help ()
-{
-    usage
-    cat << EOF
-
-    -d destdir	where to write output file (default: current directory)
-    -f file	file to add to archive (path relative to srcdir)
-    -i initfile	init-file to execute by deploy after unpacking
-    -o outfile	output file name (either absolute name or relative to destdir)
-    -s srcdir	where to look source files (default: current directory)
-    -w workdir	where to place temporary working files (default: /tmp)
-    -P product	product name to write to deploy file
-    -V version	version of product to write to deploy file
-EOF
-    exit 0
-}
-
-get_options ()
-{
-    local _opt=""
-
-    case "$1" in ( '-?' | '-help' | '--help' ) usage_help ;; esac
-    while getopts ":d:f:i:o:s:w:P:V:" _opt ; do
-	case "${_opt}" in
-	    ( 'd' ) OUTDIR="${OPTARG}"   ;;
-	    ( 'i' ) INITFILE="${OPTARG}" ;;
-	    ( 'o' ) OUTFILE="${OPTARG}"  ;;
-	    ( 's' ) SRCDIR="${OPTARG}"   ;;
-	    ( 'w' ) WORKDIR="${OPTARG}"  ;;
-	    ( 'P' ) PRODUCT="${OPTARG}"  ;;
-	    ( 'V' ) VERSION="${OPTARG}"  ;;
-	    ( 'f' ) FILELIST="${FILELIST:+"${FILELIST} "}${OPTARG}" ;;
-	    ( ':' )
-		err "missing argument for option -- '${OPTARG}'"
-		usage
-		return 1
-		;;
-	    ( '?' )
-		err "unknown option -- '${OPTARG}'"
-		usage
-		return 1
-		;;
-	    (  *  )
-		err "no handler for option '${_opt}'"
-		return 1
-		;;
-	esac
-    done
-    shift $((${OPTIND} - 1))
-    if test $# -gt 0 ; then
-	err "too many arguments"
-	usage
-	return 1
-    fi
-}
-
-###
+####
 
 # Main subroutine
 main ()
 {
-    trap 'cleanup; exit 130' HUP INT TERM
-    get_options "$@" && startup || fail
+    init "$@" && startup || fail
+    trap 'clean_fail 130' HUP INT TERM
     {
 	mkpack   &&
 	mkblob   &&

@@ -6,7 +6,7 @@ embed_deploy ()
 {
     cat << 'BEGIN' ; cat << PARAMS ; cat << 'MAIN' ; cat << BLOB ; cat << 'END'
 #%shebang
-#%version 5
+#%version 6
 
 BEGIN
 ### Deploy parameters
@@ -20,6 +20,8 @@ MD5SUM="${MD5SUM}"
 PARAMS
 #%prolog
 
+################
+
 #%include sys/msg
 #%include sys/cmd
 #%include sys/findcmd
@@ -31,52 +33,6 @@ PARAMS
 #%include deploy/unpack
 
 ################
-
-# Set variables
-: "${XDG_CACHE_HOME:=${HOME}/.cache}"
-
-BASEDIR="${XDG_CACHE_HOME}/spxshell/deploy"
-DEPLOYDIR="${BASEDIR}/${MD5SUM:-none}"
-LOCKFILE="${DEPLOYDIR}/deploy.lock"
-
-EDIR="${DEPLOYDIR}/e"
-XDIR="${DEPLOYDIR}/x"
-
-ARCHFILE="${EDIR}/archive.pax"
-INITFILE="${XDIR}/${INITFILE}"
-
-###
-
-# Initialization subroutine
-startup ()
-{
-    # Check binaries
-    # Extract
-    decode_cmd="$(find_command uudecode base64 openssl)"
-    if test -z "${decode_cmd}" ; then
-	err "can't find extract binary"
-	return 1
-    fi
-    # Unpack
-    unpack_cmd="$(find_command pax tar)"
-    if test -z "${unpack_cmd}" ; then
-	err "can't find unpack binary"
-	return 1
-    fi
-    # MD5 (if there is no MD5 binary then do not check MD5 sum)
-    test -n "${MD5SUM}" && chksum_cmd="$(find_command md5sum openssl)"
-
-    # Check directories
-    (
-	umask 0077		# Create only user accessible directories
-	check_dir "${DEPLOYDIR}" &&
-	check_dir "${EDIR}"      &&
-	check_dir "${XDIR}"
-    ) || return 1
-
-    # Check lock file
-    check_lock "${LOCKFILE}"  || return 1
-}
 
 # Extract archive from embedded blob
 extract ()
@@ -127,6 +83,56 @@ bumpver ()
     fi
 }
 
+####
+
+# Initialization subroutine
+init ()
+{
+    # Set variables
+    : "${XDG_CACHE_HOME:=${HOME}/.cache}"
+
+    BASEDIR="${XDG_CACHE_HOME}/spxshell/deploy"
+    DEPLOYDIR="${BASEDIR}/${MD5SUM:-none}"
+    LOCKFILE="${DEPLOYDIR}/deploy.lock"
+
+    EDIR="${DEPLOYDIR}/e"
+    XDIR="${DEPLOYDIR}/x"
+
+    ARCHFILE="${EDIR}/archive.pax"
+    INITFILE="${XDIR}/${INITFILE}"
+}
+
+# Startup subroutine
+startup ()
+{
+    # Check binaries
+    # Extract
+    decode_cmd="$(find_command uudecode base64 openssl)"
+    if test -z "${decode_cmd}" ; then
+	err "can't find extract binary"
+	return 1
+    fi
+    # Unpack
+    unpack_cmd="$(find_command pax tar)"
+    if test -z "${unpack_cmd}" ; then
+	err "can't find unpack binary"
+	return 1
+    fi
+    # MD5 (if there is no MD5 binary then do not check MD5 sum)
+    test -n "${MD5SUM}" && chksum_cmd="$(find_command md5sum openssl)"
+
+    # Check directories
+    (
+	umask 0077		# Create only user accessible directories
+	check_dir "${DEPLOYDIR}" &&
+	check_dir "${EDIR}"      &&
+	check_dir "${XDIR}"
+    ) || return 1
+
+    # Check lock file
+    check_lock "${LOCKFILE}"  || return 1
+}
+
 # Clean deployment directory
 cleanup ()
 {
@@ -137,24 +143,26 @@ cleanup ()
     fi
 }
 
-# Exit with error code
-fail ()
-{
-    exit 1
-}
-
 # Clean up the staff and exit with error
 clean_fail ()
 {
     cleanup
-    fail
+    fail "${1:-1}"
 }
+
+# Exit with error code
+fail ()
+{
+    exit "${1:-1}"
+}
+
+####
 
 # Main subroutine
 main ()
 {
-    trap 'trapped=true cleanup; exit 130' HUP INT TERM
-    startup || fail
+    init "$@" && startup || fail
+    trap 'trapped=true clean_fail 130' HUP INT TERM
     {
 	extract  &&
 	unpack   &&

@@ -1,5 +1,5 @@
 #%shebang
-#%version 1
+#%version 2
 #
 # Delete core files
 #
@@ -88,15 +88,26 @@ delcore ()
 
 ####
 
+# Initialization subroutine
+init ()
+{
+    var_init DELCORE_DIRS	&&
+    get_options "$@"		&&
+    var_set  DELCORE_DIRS
+}
+
+# Exit with error code
+fail ()
+{
+    exit "${1:-1}"
+}
+
+####
+
 # Main subroutine
 main ()
 {
-    {
-	var_init DELCORE_DIRS	&&
-	get_options "$@"	&&
-	var_set  DELCORE_DIRS	&&
-	delcore
-    } || return 1
+    init "$@" && delcore || fail
 }
 
 # Call main subroutine
