@@ -1,0 +1,125 @@
+#%ifinclude sys/checkfile
+
+########
+# Read configuration file
+# Arguments:
+#   $1  configuration file
+# Return:
+#    0  no errors
+#    1  error
+#   none
+# Input:
+#   none
+# Output:
+#   none
+########
+
+read_config ()
+{
+    local _cfgfile="$1"
+    local _syscfg=""
+    local _dir=""
+    local _ifs=""
+
+    # Do not read any config if '_cfgfile' is not set
+    test -n "${_cfgfile}" || return 0
+
+    # If absolute path is set then read only this config
+    case "${_cfgfile}" in
+	( /* ) parse_config "${_cfgfile}" && return 0 || return 1 ;;
+    esac
+
+    # Otherwise try to find and read config files
+    # in 'system' and 'user' config directories
+    : "${XDG_CONFIG_DIRS:=/etc/xdg}"
+    : "${XDG_CONFIG_HOME:=${HOME}/.config}"
+
+    # 'System' config
+    _ifs="${IFS}" ; IFS=":"	# Save IFS
+    for _dir in ${XDG_CONFIG_DIRS} ; do
+	if test -f "${_dir}/${_cfgfile}" ; then
+	    _syscfg="${_dir}/${_cfgfile}"
+	    break	# First found is sufficient
+	fi
+    done
+    IFS="${_ifs}"		# Restore IFS
+    if test -n "${_syscfg}" ; then
+	parse_config "${_syscfg}" || return 1
+    fi
+
+    # 'User' config
+    if test -f "${XDG_CONFIG_HOME}/${_cfgfile}" ; then
+	parse_config "${XDG_CONFIG_HOME}/${_cfgfile}" || return 1
+    fi
+}
+
+########
+# Parse configuration file
+# Arguments:
+#   $1  configuration file
+# Return:
+#    0  no errors
+#    1  error
+#   none
+# Input:
+#   none
+# Output:
+#   none
+########
+
+parse_config ()
+{
+    local _cfg="$1"
+    local _line=""
+    local _ln=0
+    local _rc=0
+    local _var=""
+    local _val=""
+    local _del=""
+
+    check_file "${_cfg}" || return 1
+    while read -r _line ; do
+	_ln="$(( ${_ln} + 1 ))"
+	case "${_line}" in
+	    ( '' | '#'* ) continue ;;	# Skip comments and empty lines
+	    ( *'='* ) ;;		# Looks like assignment
+	    ( * ) err "not an assignment" ; _rc=1 ; break ;;
+	esac
+	# Check variable name
+	_var="${_line%%=*}"		# Get variable name
+	case "${_var}" in
+	    ( *[[:space:]][![:space:]]* )
+		err "variable name with spaces" ; _rc=1 ; break ;;
+	    ( *[[:space:]] ) _var="${_var%%[[:space:]]*}"	# Trim trailing spaces
+	esac
+	(
+	    # Check variable name in POSIX locale
+	    LC_ALL=C
+	    case "${_var}" in
+		( [![:alpha:]_]* | [[:alpha:]_]*[![:alnum:]_]* )
+		    err "illegal variable name: '${_var}'" ; false ;;
+	    esac
+	) || { _rc=1 ; break ; }
+	# Check value
+	_val="${_line#*=}"		# Get value
+	case "${_val}" in
+	    ( [[:space:]]* )
+		_del="${_val%%[![:space:]]*}"	# Get spaces at the beginning...
+		_val="${_val#"${_del}"}"	# ...and cut them
+		;;
+	esac
+	case "${_val}" in
+	    ( \"* )
+		# Remove quotes
+		case "${_val}" in
+		    ( \"*\" ) _val="${_val#\"}" ; _val="${_val%\"}" ;;
+		    ( * ) err "unterminated quoted value" ; _rc=1 ; break ;;
+		esac
+		;;
+	esac
+	# Finally assign value to variable
+	eval CFG_${_var}=\"\${_val}\"
+    done < "${_cfg}"
+    test "${_rc}" -eq 0 || err "processing error in file '${_cfg}' at line ${_ln}"
+    return "${_rc}"
+}

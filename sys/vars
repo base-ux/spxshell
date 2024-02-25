@@ -29,7 +29,7 @@ var_init ()
 	    esac
 	) || return 1
 	# Unset prefixed variables
-	eval unset DEF_${_v} ENV_${_v} OPT_${_v}
+	eval unset DEF_${_v} CFG_${_v} ENV_${_v} OPT_${_v}
 	# Save environment variable
 	eval ": \"\${${_v}+\${ENV_${_v}=\${${_v}}}}\""
     done
@@ -63,7 +63,7 @@ var_set ()
 		    false ;;
 	    esac
 	) || return 1
-	# Set variable with priority (OPT -> ENV -> DEF)
-	eval ${_v}=\"\${OPT_${_v}-\${ENV_${_v}-\${DEF_${_v}}}}\"
+	# Set variable with priority (OPT -> ENV -> CFG -> DEF)
+	eval ${_v}=\"\${OPT_${_v}-\${ENV_${_v}-\${CFG_${_v}-\${DEF_${_v}}}}}\"
     done
 }
