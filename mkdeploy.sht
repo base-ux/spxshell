@@ -1,5 +1,5 @@
 #%shebang
-#%version 8
+#%version 9
 
 #%prolog
 
@@ -11,7 +11,9 @@
 #%include sys/checkfile
 #%include sys/checkdir
 #%include sys/checkvar
+#%include sys/pathabs
 #%include sys/vars
+#%include sys/config
 #%include deploy/checksum
 #%include deploy/encode
 #%include deploy/pack
@@ -22,8 +24,8 @@
 usage ()
 {
     cat << EOF
-Usage: ${PROG} [-d destdir] [-f file]... [-i initfile] [-o outfile] [-s srcdir]
-	[-w workdir] [-P product] [-V version]
+Usage: ${PROG} [-c config] [-d destdir] -f file... -i initfile [-o outfile]
+	[-s srcdir] [-w workdir] [-P product] [-V version]
 EOF
 }
 
@@ -33,6 +35,7 @@ usage_help ()
     usage
     cat << EOF
 
+    -c config	configuration file
     -d destdir	where to write output file (default: current directory)
     -f file	file to add to archive (path relative to srcdir)
     -i initfile	init-file to execute by deploy after unpacking
@@ -53,15 +56,16 @@ get_options ()
     local _opt=""
 
     case "$1" in ( '-?' | '-help' | '--help' ) usage_help ;; esac
-    while getopts ":d:f:i:o:s:w:P:V:" _opt ; do
+    while getopts ":c:d:f:i:o:s:w:P:V:" _opt ; do
 	case "${_opt}" in
-	    ( 'd' ) OPT_OUTDIR="${OPTARG}"   ;;
-	    ( 'i' ) OPT_INITFILE="${OPTARG}" ;;
-	    ( 'o' ) OPT_OUTFILE="${OPTARG}"  ;;
-	    ( 's' ) OPT_SRCDIR="${OPTARG}"   ;;
-	    ( 'w' ) OPT_WORKDIR="${OPTARG}"  ;;
-	    ( 'P' ) OPT_PRODUCT="${OPTARG}"  ;;
-	    ( 'V' ) OPT_VERSION="${OPTARG}"  ;;
+	    ( 'c' ) OPT_CONF_FILE="$(absolute_path "${OPTARG}")"	;;
+	    ( 'd' ) OPT_OUTDIR="${OPTARG}"	;;
+	    ( 'i' ) OPT_INITFILE="${OPTARG}"	;;
+	    ( 'o' ) OPT_OUTFILE="${OPTARG}"	;;
+	    ( 's' ) OPT_SRCDIR="${OPTARG}"	;;
+	    ( 'w' ) OPT_WORKDIR="${OPTARG}"	;;
+	    ( 'P' ) OPT_PRODUCT="${OPTARG}"	;;
+	    ( 'V' ) OPT_VERSION="${OPTARG}"	;;
 	    ( 'f' ) OPT_FILELIST="${OPT_FILELIST:+"${OPT_FILELIST} "}${OPTARG}" ;;
 	    ( ':' )
 		err "missing argument for option -- '${OPTARG}'"
@@ -145,8 +149,14 @@ init ()
 	# Define 'internal' variables
 	MD5SUM=""
     } &&
+    # Set up configuration file variables
+    var_init CONF_FILE		&&
+    DEF_CONF_FILE="spxshell/mkdeploy.conf"	&&
     # Get options
-    get_options "$@"	&&
+    get_options "$@"		&&
+    # Read configuration file
+    var_set  CONF_FILE		&&
+    read_config "${CONF_FILE}"	&&
     # Set variables
     var_set  FILELIST INITFILE OUTDIR  OUTFILE \
 	     PRODUCT  SRCDIR   VERSION WORKDIR
