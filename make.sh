@@ -2,7 +2,7 @@
 
 # Set variables
 PRODUCT="spxshell"
-VERSION="0.9.0"
+VERSION="0.9.1"
 
 PROG="$(basename -- "$0")"
 
@@ -27,6 +27,7 @@ sys/cmd
 sys/pathabs
 sys/pathcanon
 sys/checkfile
+sys/chkvname
 sys/vars
 spxgen.sht
 "

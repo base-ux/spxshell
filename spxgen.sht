@@ -1,6 +1,6 @@
 #%shebang
 
-SPXGEN_VERSION="18"
+SPXGEN_VERSION="19"
 
 #%prolog
 
@@ -27,6 +27,7 @@ SPXGEN_VERSION="18"
 #%embed sys/pathcanon pathcanon sys/pathcanon
 #%embed sys/vars vars sys/vars
 #%embed sys/config config sys/config
+#%embed sys/chkvname chkvname sys/chkvname
 
 ################
 

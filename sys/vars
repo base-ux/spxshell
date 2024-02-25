@@ -1,4 +1,4 @@
-#%ifinclude sys/msg
+#%ifinclude sys/chkvname
 
 ########
 # Initialize variables
@@ -7,7 +7,6 @@
 # Return:
 #    0  no errors
 #    1  error
-#   none
 # Input:
 #   none
 # Output:
@@ -19,15 +18,7 @@ var_init ()
     local _v=""
 
     for _v in "$@" ; do
-	(
-	    # Check variable name in POSIX locale
-	    LC_ALL=C
-	    case "${_v}" in
-		( [![:alpha:]_]* | [[:alpha:]_]*[![:alnum:]_]* )
-		    err "illegal variable name: '${_v}'"
-		    false ;;
-	    esac
-	) || return 1
+	check_varname "${_v}" || return 1
 	# Unset prefixed variables
 	eval unset DEF_${_v} CFG_${_v} ENV_${_v} OPT_${_v}
 	# Save environment variable
@@ -42,7 +33,6 @@ var_init ()
 # Return:
 #    0  no errors
 #    1  error
-#   none
 # Input:
 #   none
 # Output:
@@ -54,15 +44,7 @@ var_set ()
     local _v=""
 
     for _v in "$@" ; do
-	(
-	    # Check variable name in POSIX locale
-	    LC_ALL=C
-	    case "${_v}" in
-		( [![:alpha:]_]* | [[:alpha:]_]*[![:alnum:]_]* )
-		    err "illegal variable name: '${_v}'"
-		    false ;;
-	    esac
-	) || return 1
+	check_varname "${_v}" || return 1
 	# Set variable with priority (OPT -> ENV -> CFG -> DEF)
 	eval ${_v}=\"\${OPT_${_v}-\${ENV_${_v}-\${CFG_${_v}-\${DEF_${_v}}}}}\"
     done

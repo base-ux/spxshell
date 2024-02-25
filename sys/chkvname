@@ -1,0 +1,28 @@
+#%ifinclude sys/msg
+
+########
+# Check variable name (executes in subshell)
+# Arguments:
+#   $1  variable name
+# Return:
+#    0  no errors
+#    1  error
+# Input:
+#   none
+# Output:
+#   none
+########
+
+check_varname ()
+(
+    local _v="$1"
+
+    test -n "${_v}" || return 1
+    # Check variable name in POSIX locale
+    LC_ALL=C
+    case "${_v}" in
+	( [![:alpha:]_]* | [[:alpha:]_]*[![:alnum:]_]* )
+	    err "illegal variable name: '${_v}'"
+	    return 1 ;;
+    esac
+)
