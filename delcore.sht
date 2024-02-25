@@ -1,5 +1,5 @@
 #%shebang
-#%version 2
+#%version 3
 #
 # Delete core files
 #
@@ -10,7 +10,9 @@
 
 #%include sys/msg
 #%include sys/cmd
+#%include sys/pathabs
 #%include sys/vars
+#%include sys/config
 
 ################
 
@@ -18,7 +20,7 @@
 usage ()
 {
     cat << EOF
-Usage: ${PROG} [-d dir]...
+Usage: ${PROG} [-c config] [-d dir]...
 EOF
 }
 
@@ -30,6 +32,7 @@ usage_help ()
 
     Find and delete files named 'core' in specified directories
 
+    -c config	Configuration file
     -d dir	Directory for processing. This option can be used multiple
 		times (-d dir1 -d dir2) or several directories can be listed
 		separated by colon (-d dir1:dir2).
@@ -45,8 +48,9 @@ get_options ()
     local _opt=""
 
     case "$1" in ( '-?' | '-help' | '--help' ) usage_help ;; esac
-    while getopts :d: _opt ; do
+    while getopts :c:d: _opt ; do
 	case "${_opt}" in
+	    ( 'c' ) OPT_CONF_FILE="$(absolute_path "${OPTARG}")" ;;
 	    ( 'd' ) OPT_DELCORE_DIRS="${OPT_DELCORE_DIRS:+${OPT_DELCORE_DIRS}:}${OPTARG}" ;;
 	    ( ':' )
 		err "missing argument for option -- '${OPTARG}'"
@@ -92,7 +96,11 @@ delcore ()
 init ()
 {
     var_init DELCORE_DIRS	&&
+    var_init CONF_FILE		&&
+    DEF_CONF_FILE="spxshell/delcore.conf"	&&
     get_options "$@"		&&
+    var_set  CONF_FILE		&&
+    read_config "${CONF_FILE}"	&&
     var_set  DELCORE_DIRS
 }
 
