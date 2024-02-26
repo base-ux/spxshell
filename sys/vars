@@ -1,4 +1,4 @@
-#%ifinclude sys/chkvname
+#%include sys/chkvname
 
 ########
 # Initialize variables

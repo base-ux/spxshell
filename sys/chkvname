@@ -1,4 +1,4 @@
-#%ifinclude sys/msg
+#%include sys/msg
 
 ########
 # Check variable name (executes in subshell)

@@ -1,4 +1,4 @@
-#%ifinclude sys/cmd
+#%include sys/cmd
 
 ########
 # A set of checksum functions (methods)

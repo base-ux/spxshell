@@ -1,5 +1,5 @@
-#%ifinclude sys/msg
-#%ifinclude sys/cmd
+#%include sys/cmd
+#%include sys/msg
 
 ########
 # Copy single source file to destination file

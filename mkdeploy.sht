@@ -1,19 +1,20 @@
 #%shebang
-#%version 9
+#%version 10
 
 #%prolog
 
 ################
 
-#%include sys/msg
-#%include sys/cmd
-#%include sys/findcmd
-#%include sys/checkfile
 #%include sys/checkdir
+#%include sys/checkfile
 #%include sys/checkvar
+#%include sys/cmd
+#%include sys/config
+#%include sys/findcmd
+#%include sys/msg
 #%include sys/pathabs
 #%include sys/vars
-#%include sys/config
+
 #%include deploy/checksum
 #%include deploy/encode
 #%include deploy/pack
@@ -270,7 +271,7 @@ main ()
     cleanup
 }
 
-#%include deploy/deploy-embed
+#%uinclude deploy/deploy-embed
 
 # Call main subroutine
 main "$@"

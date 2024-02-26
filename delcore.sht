@@ -1,5 +1,5 @@
 #%shebang
-#%version 3
+#%version 4
 #
 # Delete core files
 #
@@ -8,11 +8,11 @@
 
 ################
 
-#%include sys/msg
 #%include sys/cmd
+#%include sys/config
+#%include sys/msg
 #%include sys/pathabs
 #%include sys/vars
-#%include sys/config
 
 ################
 
@@ -48,7 +48,7 @@ get_options ()
     local _opt=""
 
     case "$1" in ( '-?' | '-help' | '--help' ) usage_help ;; esac
-    while getopts :c:d: _opt ; do
+    while getopts ":c:d:" _opt ; do
 	case "${_opt}" in
 	    ( 'c' ) OPT_CONF_FILE="$(absolute_path "${OPTARG}")" ;;
 	    ( 'd' ) OPT_DELCORE_DIRS="${OPT_DELCORE_DIRS:+${OPT_DELCORE_DIRS}:}${OPTARG}" ;;

@@ -1,33 +1,33 @@
 #%shebang
 
-SPXGEN_VERSION="19"
+SPXGEN_VERSION="20"
 
 #%prolog
 
-#%include sys/msg
+#%include sys/checkfile
 #%include sys/cmd
+#%include sys/msg
 #%include sys/pathabs
 #%include sys/pathcanon
-#%include sys/checkfile
 #%include sys/vars
 
 ################
 
-#%embed sys/prolog prolog sys/prolog
-#%embed sys/msg msg sys/msg
-#%embed sys/cmd cmd sys/cmd
-#%embed sys/findcmd findcmd sys/findcmd
 #%embed sys/checkdir checkdir sys/checkdir
 #%embed sys/checkfile checkfile sys/checkfile
 #%embed sys/checklock checklock sys/checklock
 #%embed sys/checkvar checkvar sys/checkvar
+#%embed sys/chkvname chkvname sys/chkvname
+#%embed sys/config config sys/config
+#%embed sys/cmd cmd sys/cmd
 #%embed sys/copyfile copyfile sys/copyfile
+#%embed sys/findcmd findcmd sys/findcmd
 #%embed sys/linkfile linkfile sys/linkfile
+#%embed sys/msg msg sys/msg
 #%embed sys/pathabs pathabs sys/pathabs
 #%embed sys/pathcanon pathcanon sys/pathcanon
+#%embed sys/prolog prolog sys/prolog
 #%embed sys/vars vars sys/vars
-#%embed sys/config config sys/config
-#%embed sys/chkvname chkvname sys/chkvname
 
 ################
 
@@ -227,54 +227,24 @@ do_embed ()
 # Process '#%include' directive
 do_include ()
 {
-    local _f=""
-
     set -- ${CURLINE##'#%include'}
     if test $# -eq 0 ; then
 	err "no parameters set for '#%include' directive"
 	return 1
     fi
-    _f="$(search_file "$*")" || return 1
-    process_file "${_f}"
-}
-
-# Process '#%ifinclude' directive
-do_ifinclude ()
-{
-    local _f=""
-    local _cf=""
-
-    set -- ${CURLINE##'#%ifinclude'}
-    if test $# -eq 0 ; then
-	err "no parameters set for '#%ifinclude' directive"
-	return 1
-    fi
-    {
-	_f="$(search_file "$*")"	&&
-	case "${_f}" in
-	    ( "embed:"* ) _cf="${_f}" ;;
-	    ( * ) _cf="$(canonical_path "${_f}")" ;;
-	esac				&&
-	case "|${PLIST}|" in
-	    ( *"|${_cf}|"* ) return 0 ;;
-	esac
-    } || return 1
-    process_file "${_f}"
+    include_file "$*"
 }
 
 # Process '#%prolog' directive
 do_prolog ()
 {
-    local _f=""
-
     case "${CURLINE}" in
 	( *[[:space:]][![:space:]]* )
 	    err "no parameters allowed for '#%prolog' directive"
 	    return 1
 	    ;;
     esac
-    _f="$(search_file "${PROLOG}")" || return 1
-    process_file "${_f}"
+    include_file "${PROLOG}"
 }
 
 # Process '#%shebang' directive
@@ -287,6 +257,25 @@ do_shebang ()
 	    ;;
     esac
     output_line "${SHEBANG}"
+}
+
+# Process '#%uinclude' directive
+do_uinclude ()
+{
+    local _f=""
+
+    set -- ${CURLINE##'#%uinclude'}
+    if test $# -eq 0 ; then
+	err "no parameters set for '#%uinclude' directive"
+	return 1
+    fi
+    _f="$(search_file "$*")" || return 1
+    (
+	# Process 'uinclude' file in subshell
+	# Reset PLIST so all 'include' directives in 'uinclude' will work as expected
+	PLIST=""
+	process_file "${_f}"
+    )
 }
 
 # Process '#%version' directive
@@ -306,10 +295,10 @@ do_directive ()
 {
     case "${CURLINE}" in
 	( '#%embed'     | '#%embed'[[:space:]]*     ) do_embed     || return 1 ;;
-	( '#%ifinclude' | '#%ifinclude'[[:space:]]* ) do_ifinclude || return 1 ;;
 	( '#%include'   | '#%include'[[:space:]]*   ) do_include   || return 1 ;;
 	( '#%prolog'    | '#%prolog'[[:space:]]*    ) do_prolog    || return 1 ;;
 	( '#%shebang'   | '#%shebang'[[:space:]]*   ) do_shebang   || return 1 ;;
+	( '#%uinclude'  | '#%uinclude'[[:space:]]*  ) do_uinclude  || return 1 ;;
 	( '#%version'   | '#%version'[[:space:]]*   ) do_version   || return 1 ;;
 	( * )
 	    err "unknown directive '${CURLINE%%[[:space:]]*}'"
@@ -319,6 +308,26 @@ do_directive ()
 }
 
 ####
+
+# Include file
+include_file ()
+{
+    local _f="$1"
+    local _cf=""
+
+    {
+	test -n "${_f}"			&&
+	_f="$(search_file "${_f}")"	&&
+	case "${_f}" in
+	    ( "embed:"* ) _cf="${_f}" ;;
+	    ( * ) _cf="$(canonical_path "${_f}")" ;;
+	esac				&&
+	case "|${PLIST}|" in
+	    ( *"|${_cf}|"* ) return 0 ;;
+	esac
+    } || return 1
+    process_file "${_f}"
+}
 
 # Read file
 read_file ()
@@ -411,7 +420,7 @@ process_file ()
     PSTACK="${PSTACK%"|"*}"	# Remove trailing bar
 
     # Add canonical file name to the list of processed files
-    # which is used in conditional '#%ifinclude' directive
+    # which is used in '#%include' directive
     case " ${PLIST} " in
 	( *"|${_cfile}|"* ) ;;
 	( * ) PLIST="${PLIST:+${PLIST}|}${_cfile}" ;;
@@ -433,7 +442,7 @@ init ()
 	DEF_SHEBANG="#!/bin/sh"
 	# Define 'internal' variables
 	# PSTACK is used as filenames stack for 'process_file' function
-	# PLIST is used as filenames list of the processed files for '#%ifinclude' directive
+	# PLIST is used as filenames list of the processed files for '#%include' directive
 	# CURFILE is currently processing filename
 	# CURLINE is currently read line in CURFILE
 	# EMBEDMAP is '[id:function]' map for embedded functions

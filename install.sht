@@ -1,15 +1,15 @@
 #%shebang
-#%version 3
+#%version 4
 #
 # Installation script
 #
 
 #%prolog
 
-#%include sys/msg
 #%include sys/cmd
 #%include sys/copyfile
 #%include sys/linkfile
+#%include sys/msg
 
 ################
 

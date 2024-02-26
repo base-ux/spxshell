@@ -2,7 +2,7 @@
 
 # Set variables
 PRODUCT="spxshell"
-VERSION="0.9.2"
+VERSION="0.10.0"
 
 PROG="$(basename -- "$0")"
 
@@ -22,12 +22,12 @@ DELCORE="${OUTDIR}/delcore.sh"
 
 SPXBSSRCS="
 sys/prolog
-sys/msg
-sys/cmd
-sys/pathabs
-sys/pathcanon
 sys/checkfile
 sys/chkvname
+sys/cmd
+sys/msg
+sys/pathabs
+sys/pathcanon
 sys/vars
 spxgen.sht
 "

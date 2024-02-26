@@ -1,5 +1,6 @@
-#%ifinclude sys/checkfile
-#%ifinclude sys/chkvname
+#%include sys/checkfile
+#%include sys/chkvname
+#%include sys/msg
 
 ########
 # Read configuration file
