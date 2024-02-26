@@ -2,7 +2,7 @@
 
 # Set variables
 PRODUCT="spxshell"
-VERSION="0.10.0"
+VERSION="0.10.1"
 
 PROG="$(basename -- "$0")"
 
@@ -13,12 +13,13 @@ SRCDIR="${D}"
 OUTDIR="${D}/out"
 
 SPXGEN_SHT="${SRCDIR}/spxgen.sht"
+INSTALL_SHT="${SRCDIR}/install.sht"
+
 SPXGEN_BS="${OUTDIR}/spxgen-bs.sh"
 
 SPXGEN="${OUTDIR}/spxgen.sh"
 MKDEPLOY="${OUTDIR}/mkdeploy.sh"
 INSTALL="${OUTDIR}/install.sh"
-DELCORE="${OUTDIR}/delcore.sh"
 
 SPXBSSRCS="
 sys/prolog
@@ -34,9 +35,10 @@ spxgen.sht
 
 SRCS="
 delcore.sht
-install.sht
 mkdeploy.sht
 "
+
+FILELIST=""
 
 SH="$(command -pv sh)"
 
@@ -64,16 +66,19 @@ build ()
 {
     # Generate 'spxgen.sh' first
     bootstrap || return 1
-    # Check files
+    # Check files and generate scripts
     for _src in ${SRCS} ; do
 	_f="${SRCDIR}/${_src}"
 	if ! test -f "${_f}" ; then
 	    printf "%s: file '%s' not found\n" "${PROG}" "${_f}"
 	    return 1
 	fi
-	_outfile="${OUTDIR}/$(basename "${_src}" ".sht").sh"
+	_outfile="${OUTDIR}/${_src%.sht}.sh"
 	${SH} "${SPXGEN}" -o "${_outfile}" "${_f}" || return 1
+	FILELIST="${FILELIST:+"${FILELIST} "}${_outfile}"
     done
+    # Generate 'install.sh'
+    ${SH} "${SPXGEN}" -o "${INSTALL}" "${INSTALL_SHT}" || return 1
 }
 
 # Create deploy script
@@ -86,7 +91,8 @@ deploy ()
 	-o "${OUTDIR}/${PRODUCT}-v${VERSION}.sh" \
 	-P "${PRODUCT}" -V "${VERSION}" \
 	-i "${INSTALL}" \
-	-f "${DELCORE} ${MKDEPLOY} ${SPXGEN}" \
+	-f "${SPXGEN}" \
+	-f "${FILELIST}"  \
     || return 1
 }
 
