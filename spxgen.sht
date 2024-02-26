@@ -1,6 +1,6 @@
 #%shebang
 
-SPXGEN_VERSION="20"
+SPXGEN_VERSION="21"
 
 #%prolog
 
@@ -115,9 +115,23 @@ search_file ()
     local _if=""
 
     case "${_f}" in
-	(    /*  ) _if="$(absolute_path "${_f}")" ;;
-	( '$R/'* ) _if="$(absolute_path "${_f#\$R/}" "${ROOTDIR}")" ;;
-	( '$S/'* ) _if="${_f#\$S/}" ; _if="${_if:+embed:${_if}}" ;;
+	(   ''   ) return 1 ;;
+	(    /*  ) _if="$(absolute_path "${_f}")" && test -f "${_if}" ;;
+	( '$R/'* )
+	    _if="${_f#\$R/}"
+	    test -n "${_if}" || { err "empty \$R macros" ; return 1 ; }
+	    _if="$(absolute_path "${_if}" "${ROOTDIR}")"	&&
+	    test -f "${_if}"
+	    ;;
+	( '$S/'* )
+	    _if="${_f#\$S/}"
+	    test -n "${_if}" || { err "empty \$S macros" ; return 1 ; }
+	    # Check system embedded functions
+	    case "${SPXMAP}" in
+		( *"[${_if}:"*"]" ) _if="embed:${_if}" ;;
+		( * ) err "can't find embedded id '${_if}'" ; return 1 ;;
+	    esac
+	    ;;
 	( * )
 	    {
 		# First check path relative to CURFILE
@@ -131,20 +145,19 @@ search_file ()
 		test -f "${_if}"
 	    } ||
 	    {
-		# Third check embedded functions
-		test -n "${EMBEDMAP}" &&
-		case "${EMBEDMAP}" in
+		# Third check system embedded functions
+		case "${SPXMAP}" in
 		    ( *"[${_f}:"*"]" ) _if="embed:${_f}" ;;
 		    ( * ) false ;;
 		esac
-	    } ||
-	    {
-		err "can't find file '${_f}'"
-		return 1
 	    }
 	    ;;
-    esac
-    test -n "${_if}" && printf "%s" "${_if}" || return 1
+    esac ||
+    {
+	err "can't find file '${_f}'"
+	return 1
+    }
+    printf "%s" "${_if}"
 }
 
 # Create embed function definition
@@ -163,14 +176,14 @@ add_embed ()
 	    return 1
 	    ;;
     esac
-    test -n "${EMBEDMAP}" &&
+    # Check if there is record already in the map
     case "${EMBEDMAP}" in
 	( *"[${_id}:"*"]"* )	# Check for duplicates
 	    err "duplicate embedding for id '${_id}'"
 	    return 1
 	    ;;
 	( *"["*":${_fn}]"* )	# Check if function already defined
-	    output_line "EMBEDMAP=\"\${EMBEDMAP}[${_id}:${_fn}]\""
+	    output_line "IDFN_MAP=\"\${IDFN_MAP}[${_id}:${_fn}]\""
 	    EMBEDMAP="${EMBEDMAP}[${_id}:${_fn}]"
 	    EMBFLAG="true"
 	    return 0
@@ -181,7 +194,8 @@ add_embed ()
     _ef="$(search_file "${_f}")" || return 1
     case "${_ef}" in
 	( "embed:"* )
-	    _efn="${EMBEDMAP##*"[${_ef#embed:}:"}" ; _efn="${_efn%%"]"*}"
+	    # Get function name from system embedded map
+	    _efn="${SPXMAP##*"[${_ef#embed:}:"}" ; _efn="${_efn%%"]"*}"
 	    if ! command -v "embed_${_efn}" >/dev/null ; then
 		err "embedding function 'embed_${_efn}' is not defined"
 		return 1
@@ -197,7 +211,7 @@ embed_${_fn} ()
 $(test -n "${_efn}" && embed_${_efn} || cmd cat "${_ef}")
 END_${_fn}
 }
-EMBEDMAP="\${EMBEDMAP}[${_id}:${_fn}]"
+IDFN_MAP="\${IDFN_MAP}[${_id}:${_fn}]"
 
 EOF
 
@@ -272,8 +286,10 @@ do_uinclude ()
     _f="$(search_file "$*")" || return 1
     (
 	# Process 'uinclude' file in subshell
-	# Reset PLIST so all 'include' directives in 'uinclude' will work as expected
+	# Reset PLIST and EMBEDMAP so all 'include' directives
+	# in 'uinclude' will work as expected
 	PLIST=""
+	EMBEDMAP=""
 	process_file "${_f}"
     )
 }
@@ -370,13 +386,12 @@ process_file ()
 
     case "${_pfile}" in
 	( "embed:"* )
-	    # Check embedded function
+	    # Check system embedded function
 	    _cfile="${_pfile}"
 	    _id="${_pfile#embed:}"
-	    test -n "${EMBEDMAP}" &&
-	    case "${EMBEDMAP}" in
+	    case "${SPXMAP}" in
 		( *"[${_id}:"*"]" )
-		    _fn="${EMBEDMAP##*"[${_id}:"}" ; _fn="${_fn%%"]"*}"
+		    _fn="${SPXMAP##*"[${_id}:"}" ; _fn="${_fn%%"]"*}"
 		    if ! command -v "embed_${_fn}" >/dev/null ; then
 			err "embedding function 'embed_${_fn}' is not defined"
 			return 1
@@ -450,7 +465,9 @@ init ()
 	PLIST=""
 	CURFILE=""
 	CURLINE=""
-	: "${EMBEDMAP:=}"	# Can be set already by embed functions definitions
+	EMBEDMAP=""
+	# Set system embedded functions map
+	SPXMAP="${IDFN_MAP}"
     } &&
     # Get options
     get_options "$@"	&&
