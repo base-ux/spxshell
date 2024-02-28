@@ -1,0 +1,166 @@
+#%shebang
+#%version 1
+#
+# Run nmon statistics collection
+#
+
+#%prolog
+
+################
+
+#%include sys/checkdir
+#%include sys/cmd
+#%include sys/config
+#%include sys/msg
+#%include sys/pathabs
+#%include sys/vars
+
+################
+
+# Print usage information
+usage ()
+{
+    cat << EOF
+Usage: ${PROG} [-c config] [-d dir] [-n count] [-o opts] [-s seconds]
+EOF
+}
+
+# Print help information
+usage_help ()
+{
+    usage
+    cat << EOF
+
+    Run nmon statistics collection
+
+    -c config	configuration file
+    -d dir	output directory [default: ${DEF_NMON_DIR}]
+    -n count	number of refreshes [default: ${DEF_NMON_COUNT}]
+    -o opts	options for 'nmon' executable [default: ${DEF_NMON_OPTS}]
+    -s seconds	number of seconds between refreshes [default: ${DEF_NMON_SECONDS}]
+EOF
+    exit 0
+}
+
+####
+
+# Parse command line options
+get_options ()
+{
+    local _opt=""
+
+    case "$1" in ( '-?' | '-help' | '--help' ) usage_help ;; esac
+    while getopts ":c:d:n:o:s:" _opt ; do
+	case "${_opt}" in
+	    ( 'c' ) OPT_CONF_FILE="$(absolute_path "${OPTARG}")" ;;
+	    ( 'd' ) OPT_NMON_DIR="${OPTARG}"     ;;
+	    ( 'n' ) OPT_NMON_COUNT="${OPTARG}"   ;;
+	    ( 'o' ) OPT_NMON_OPTS="${OPTARG}"    ;;
+	    ( 's' ) OPT_NMON_SECONDS="${OPTARG}" ;;
+	    ( ':' )
+		err "missing argument for option -- '${OPTARG}'"
+		usage ; return 1 ;;
+	    ( '?' )
+		err "unknown option -- '${OPTARG}'"
+		usage ; return 1 ;;
+	    (  *  )
+		err "no handler for option '${_opt}'"
+		return 1 ;;
+	esac
+    done
+    shift $((${OPTIND} - 1))
+    if test $# -ne 0 ; then
+	err "too many arguments"
+	usage
+	return 1
+    fi
+}
+
+####
+
+# Run nmon statistics collection
+nmon_collect ()
+{
+    eval cmd "${NMON}" "${NMON_OPTS}" -c "${NMON_COUNT}" -s "${NMON_SECONDS}" -m "${NMON_DIR}"
+}
+
+####
+
+# Initialization subroutine
+init ()
+{
+    # Initialize variables
+    var_init NMON_DIR NMON_COUNT NMON_SECONDS NMON_OPTS	&&
+    {
+	# Set defaults
+	DEF_NMON_DIR="/var/nmon"
+	DEF_NMON_OPTS="-f"
+	DEF_NMON_COUNT="1440"
+	DEF_NMON_SECONDS="60"
+	# Define 'internal' variables
+	NMON=""
+    } &&
+    # Set up configuration file variables
+    var_init CONF_FILE		&&
+    DEF_CONF_FILE="spxshell/nmon.conf"	&&
+    # Get options
+    get_options "$@"		&&
+    # Read configuration file
+    var_set  CONF_FILE		&&
+    read_config "${CONF_FILE}"	&&
+    # Set variables
+    var_set  NMON_DIR NMON_COUNT NMON_SECONDS NMON_OPTS
+}
+
+# Startup subroutine
+startup ()
+{
+    # Get 'nmon' executable path
+    NMON="$(command -v nmon)"
+    if test -z "${NMON}" ; then
+	err "can't find 'nmon' executable"
+	return 1
+    fi
+
+    # Check '-f' flag to 'nmon'
+    case "${NMON_OPTS}" in
+	( *f* ) ;;
+	(  *  ) err "'nmon' options must contain '-f' flag" ; return 1 ;;
+    esac
+
+    # Check numeric options
+    case "${NMON_COUNT}" in
+	( '' ) err "empty value for 'count'" ; return 1 ;;
+	( *[![:digit:]]* ) err "illegal value for 'count'" ; return 1 ;;
+    esac
+    case "${NMON_SECONDS}" in
+	( '' ) err "empty value for 'seconds'" ; return 1 ;;
+	( *[![:digit:]]* ) err "illegal value for 'seconds'" ; return 1 ;;
+    esac
+
+    # Check output directory
+    if test -z "${NMON_DIR}" ; then
+	err "empty value for 'output directory'"
+	return 1
+    else
+	NMON_DIR="$(absolute_path "${NMON_DIR}")"
+    fi
+    ( umask 0002 ; check_dir "${NMON_DIR}" ) || return 1
+}
+
+# Exit with error code
+fail ()
+{
+    exit "${1:-1}"
+}
+
+####
+
+# Main subroutine
+main ()
+{
+    init "$@" && startup && nmon_collect || fail
+}
+
+# Call main subroutine
+main "$@"

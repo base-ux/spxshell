@@ -1,0 +1,142 @@
+#%shebang
+#%version 1
+#
+# Clean up old nmon statistics
+#
+
+#%prolog
+
+################
+
+#%include sys/cmd
+#%include sys/config
+#%include sys/msg
+#%include sys/pathabs
+#%include sys/vars
+
+################
+
+# Print usage information
+usage ()
+{
+    cat << EOF
+Usage: ${PROG} [-c config] [-d dir] [-n days]
+EOF
+}
+
+# Print help information
+usage_help ()
+{
+    usage
+    cat << EOF
+
+    Clean up old nmon statistics
+
+    -c config	configuration file
+    -d dir	'nmon' directory [default: ${DEF_NMON_DIR}]
+    -n days	number of days to keep [default: ${DEF_NMON_DAYS}]
+EOF
+    exit 0
+}
+
+####
+
+# Parse command line options
+get_options ()
+{
+    local _opt=""
+
+    case "$1" in ( '-?' | '-help' | '--help' ) usage_help ;; esac
+    while getopts ":c:d:n:" _opt ; do
+	case "${_opt}" in
+	    ( 'c' ) OPT_CONF_FILE="$(absolute_path "${OPTARG}")" ;;
+	    ( 'd' ) OPT_NMON_DIR="${OPTARG}"     ;;
+	    ( 'n' ) OPT_NMON_DAYS="${OPTARG}"    ;;
+	    ( ':' )
+		err "missing argument for option -- '${OPTARG}'"
+		usage ; return 1 ;;
+	    ( '?' )
+		err "unknown option -- '${OPTARG}'"
+		usage ; return 1 ;;
+	    (  *  )
+		err "no handler for option '${_opt}'"
+		return 1 ;;
+	esac
+    done
+    shift $((${OPTIND} - 1))
+    if test $# -ne 0 ; then
+	err "too many arguments"
+	usage
+	return 1
+    fi
+}
+
+####
+
+# Clean up old nmon statistics
+nmon_cleanup ()
+{
+    if test -d "${NMON_DIR}" ; then
+	cmd find -L "${NMON_DIR}" -type f -name "*.nmon" \
+	    -mtime "+${NMON_DAYS}" -exec rm {} \+
+    fi
+}
+
+####
+
+# Initialization subroutine
+init ()
+{
+    # Initialize variables
+    var_init NMON_DIR NMON_DAYS &&
+    {
+	# Set defaults
+	DEF_NMON_DIR="/var/nmon"
+	DEF_NMON_DAYS="90"
+    } &&
+    # Set up configuration file variables
+    var_init CONF_FILE		&&
+    DEF_CONF_FILE="spxshell/nmon.conf"	&&
+    # Get options
+    get_options "$@"		&&
+    # Read configuration file
+    var_set  CONF_FILE		&&
+    read_config "${CONF_FILE}"	&&
+    # Set variables
+    var_set  NMON_DIR NMON_DAYS
+}
+
+# Startup subroutine
+startup ()
+{
+    # Check numeric options
+    case "${NMON_DAYS}" in
+	( '' ) err "empty value for 'days'" ; return 1 ;;
+	( *[![:digit:]]* ) err "illegal value for 'days'" ; return 1 ;;
+    esac
+
+    # Check output directory
+    if test -z "${NMON_DIR}" ; then
+	err "empty value for 'nmon directory'"
+	return 1
+    else
+	NMON_DIR="$(absolute_path "${NMON_DIR}")"
+    fi
+}
+
+# Exit with error code
+fail ()
+{
+    exit "${1:-1}"
+}
+
+####
+
+# Main subroutine
+main ()
+{
+    init "$@" && startup && nmon_cleanup || fail
+}
+
+# Call main subroutine
+main "$@"

@@ -2,7 +2,7 @@
 
 # Set variables
 PRODUCT="spxshell"
-VERSION="0.10.1"
+VERSION="0.11.0"
 
 PROG="$(basename -- "$0")"
 
@@ -36,6 +36,8 @@ spxgen.sht
 SRCS="
 delcore.sht
 mkdeploy.sht
+nmon-cleanup.sht
+nmon-collect.sht
 "
 
 FILELIST=""

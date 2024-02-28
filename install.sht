@@ -1,10 +1,12 @@
 #%shebang
-#%version 4
+#%version 5
 #
 # Installation script
 #
 
 #%prolog
+
+################
 
 #%include sys/cmd
 #%include sys/copyfile
@@ -19,6 +21,8 @@ SRCDIR="$(cd -- "$(dirname -- "$0")" ; pwd)"
 SRCFILES="
 delcore.sh
 mkdeploy.sh
+nmon-cleanup.sh
+nmon-collect.sh
 spxgen.sh
 "
 
@@ -27,6 +31,8 @@ TSTDIRS="/usr/scripts:/usr/local/scripts:/usr/local/bin:${HOME}/bin"
 BINDIR=""
 LINKDIR=""
 LINK=""
+
+####
 
 # Test directories
 test_dirs ()
@@ -52,26 +58,7 @@ test_dirs ()
     printf "%s" "${_out}"
 }
 
-# Initialization subroutine
-startup ()
-{
-    # Choose bin directory
-    BINDIR="$(test_dirs "${TSTDIRS}")"
-    if test -z "${BINDIR}" ; then
-	err "can't install in any bin directories"
-	return 1
-    fi
-    case ":${PATH}:" in
-	( *":${BINDIR}:"* ) LINK="no" ;;
-	( * ) LINK="yes" ;;
-    esac
-
-    # Choose directory for links
-    if test "${LINK}" = "yes" ; then
-	LINKDIR="$(test_dirs "${PATH}")"
-	test -n "${LINKDIR}" || LINK="no"
-    fi
-}
+####
 
 # Copy files
 install_files ()
@@ -93,6 +80,31 @@ install_files ()
     done
     return ${_rc}
 }
+
+####
+
+# Initialization subroutine
+startup ()
+{
+    # Choose bin directory
+    BINDIR="$(test_dirs "${TSTDIRS}")"
+    if test -z "${BINDIR}" ; then
+	err "can't install in any bin directories"
+	return 1
+    fi
+    case ":${PATH}:" in
+	( *":${BINDIR}:"* ) LINK="no" ;;
+	( * ) LINK="yes" ;;
+    esac
+
+    # Choose directory for links
+    if test "${LINK}" = "yes" ; then
+	LINKDIR="$(test_dirs "${PATH}")"
+	test -n "${LINKDIR}" || LINK="no"
+    fi
+}
+
+####
 
 # Main subroutine
 main ()
