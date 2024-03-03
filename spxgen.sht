@@ -1,6 +1,6 @@
 #%shebang
 
-SPXGEN_VERSION="21"
+SPXGEN_VERSION="22"
 
 #%prolog
 
@@ -16,7 +16,6 @@ SPXGEN_VERSION="21"
 #%embed sys/checkdir checkdir sys/checkdir
 #%embed sys/checkfile checkfile sys/checkfile
 #%embed sys/checklock checklock sys/checklock
-#%embed sys/checkvar checkvar sys/checkvar
 #%embed sys/chkvname chkvname sys/chkvname
 #%embed sys/config config sys/config
 #%embed sys/cmd cmd sys/cmd

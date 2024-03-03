@@ -6,7 +6,7 @@ embed_deploy ()
 {
     cat << 'BEGIN' ; cat << PARAMS ; cat << 'MAIN' ; cat << BLOB ; cat << 'END'
 #%shebang
-#%version 7
+#%version 8
 
 BEGIN
 ### Deploy parameters
@@ -24,7 +24,6 @@ PARAMS
 
 #%include sys/checkdir
 #%include sys/checklock
-#%include sys/checkvar
 #%include sys/cmd
 #%include sys/findcmd
 #%include sys/msg

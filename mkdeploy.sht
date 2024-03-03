@@ -1,5 +1,5 @@
 #%shebang
-#%version 10
+#%version 11
 
 #%prolog
 
@@ -7,7 +7,6 @@
 
 #%include sys/checkdir
 #%include sys/checkfile
-#%include sys/checkvar
 #%include sys/cmd
 #%include sys/config
 #%include sys/findcmd
@@ -185,12 +184,6 @@ startup ()
     # MD5 (if there is no MD5 binary then do not check MD5 sum)
     chksum_cmd="$(find_command md5sum openssl)"
 
-    # Check variables
-    {
-	check_var FILELIST &&
-	check_var INITFILE
-    } || return 1
-
     # Normalize output file path
     case "${OUTFILE}" in
 	( /* ) OUTDIR="$(dirname -- "${OUTFILE}")" ;;
@@ -204,6 +197,16 @@ startup ()
     fi
     if ! test -d "${OUTDIR}" ; then
 	err "directory '${OUTDIR}' doesn't exist"
+	return 1
+    fi
+
+    # Check variables
+    if test -z "${FILELIST}" ; then
+	err "no 'file' or list of files are set"
+	return 1
+    fi
+    if test -z "${INITFILE}" ; then
+	err "no 'initfile' is set"
 	return 1
     fi
 
