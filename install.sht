@@ -1,5 +1,5 @@
 #%shebang
-#%version 5
+#%version 6
 #
 # Installation script
 #
@@ -24,6 +24,7 @@ mkdeploy.sh
 nmon-cleanup.sh
 nmon-collect.sh
 spxgen.sh
+sysexec.sh
 "
 
 TSTDIRS="/usr/scripts:/usr/local/scripts:/usr/local/bin:${HOME}/bin"

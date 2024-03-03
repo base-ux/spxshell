@@ -2,7 +2,7 @@
 
 # Set variables
 PRODUCT="spxshell"
-VERSION="0.11.0"
+VERSION="0.12.0"
 
 PROG="$(basename -- "$0")"
 
@@ -38,6 +38,7 @@ delcore.sht
 mkdeploy.sht
 nmon-cleanup.sht
 nmon-collect.sht
+sysexec.sht
 "
 
 FILELIST=""

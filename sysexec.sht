@@ -1,0 +1,379 @@
+#%shebang
+#%version 1
+#
+# Execute commands on remote host
+#
+
+#%prolog
+
+################
+
+#%include sys/checkdir
+#%include sys/checkfile
+#%include sys/cmd
+#%include sys/config
+#%include sys/msg
+#%include sys/pathabs
+#%include sys/pathcanon
+#%include sys/vars
+
+################
+
+# Print usage information
+usage ()
+{
+    cat << EOF
+Usage: ${PROG} [-c config] [-h host]... [-l listfile]...
+	[-u user] [-o "sshopts"]...
+	{ [-e command]... [-f cmdfile]... | command }
+EOF
+}
+
+# Print help information
+usage_help ()
+{
+    usage
+    cat << EOF
+
+    Execute commands on remote host
+
+    -c config	configuration file
+    -h host	host where the commands to be executed
+    -l listfile	file with the list of hosts where the commands to be executed
+    -u user	user to login to the hosts
+    -o sshopts	options to 'ssh' command
+    -e command	command to be executed on the hosts
+    -f cmdfile	file with the list of commands to be executed on the hosts
+
+    Either combination of '-e' and '-f' flags or just 'command' should be set.
+EOF
+    exit 0
+}
+
+####
+
+# Parse command line options
+get_options ()
+{
+    local _opt=""
+    local _cnum=0
+    local _hnum=0
+
+    case "$1" in ( '-?' | '-help' | '--help' ) usage_help ;; esac
+    while getopts ":c:e:f:h:l:o:u:" _opt ; do
+	case "${_opt}" in
+	    ( 'c' ) OPT_CONF_FILE="$(absolute_path "${OPTARG}")" ;;
+	    ( 'e' )
+		test -n "${OPTARG}" || continue
+		_cnum="$(( ${_cnum} + 1 ))"
+		eval SE_CLIST_E${_cnum}=\"\${OPTARG}\"
+		SE_CLIST="${SE_CLIST:+"${SE_CLIST} "}E${_cnum}"
+		;;
+	    ( 'f' )
+		test -n "${OPTARG}" || continue
+		_cnum="$(( ${_cnum} + 1 ))"
+		eval SE_CLIST_F${_cnum}=\"\${OPTARG}\"
+		SE_CLIST="${SE_CLIST:+"${SE_CLIST} "}F${_cnum}"
+		;;
+	    ( 'h' )
+		test -n "${OPTARG}" || continue
+		_hnum="$(( ${_hnum} + 1 ))"
+		eval SE_HLIST_H${_hnum}=\"\${OPTARG}\"
+		SE_HLIST="${SE_HLIST:+"${SE_HLIST} "}H${_hnum}"
+		;;
+	    ( 'l' )
+		test -n "${OPTARG}" || continue
+		_hnum="$(( ${_hnum} + 1 ))"
+		eval SE_HLIST_L${_hnum}=\"\${OPTARG}\"
+		SE_HLIST="${SE_HLIST:+"${SE_HLIST} "}L${_hnum}"
+		;;
+	    ( 'o' ) OPT_SE_SSHOPTS="${OPT_SE_SSHOPTS:+"${OPT_SE_SSHOPTS} "}${OPTARG}" ;;
+	    ( 'u' ) OPT_SE_USER="${OPTARG}" ;;
+	    ( ':' )
+		err "missing argument for option -- '${OPTARG}'"
+		usage ; return 1 ;;
+	    ( '?' )
+		err "unknown option -- '${OPTARG}'"
+		usage ; return 1 ;;
+	    (  *  )
+		err "no handler for option '${_opt}'"
+		return 1 ;;
+	esac
+    done
+    shift $((${OPTIND} - 1))
+    if test -n "$*" ; then
+	if test -n "${SE_CLIST}" ; then
+	    err "'-e' and '-f' options are mutually exclusive with 'command'"
+	    return 1
+	fi
+	SE_CLIST_E1="$*"
+	SE_CLIST="E1"
+    fi
+}
+
+####
+
+# Process listfile
+process_file ()
+{
+    local _file="$1"
+    local _cfile=""
+    local _line=""
+    local _if=""
+    local _dir=""
+    local _del=""
+
+    # Add canonical file name to stack
+    _cfile="$(canonical_path "${_file}")"
+    case "|${PSTACK}|" in
+	( *"|${_cfile}|"* ) return 0 ;;	# File already in process
+	( * ) PSTACK="${PSTACK:+${PSTACK}|}${_cfile}" ;;
+    esac
+
+    # Read file
+    while read -r _line ; do
+	case "${_line}" in
+	    ( '' | '#'* ) continue ;;	# Skip comments and empty lines
+	    ( '%'* )	# Include file
+		_if="${_line#\%}"	# Remove '%'
+		case "${_if}" in
+		    ( '' ) continue ;;	# Skip empty include
+		    ( [[:space:]]* )	# Remove leading spaces
+			_del="${_if%%[![:space:]]*}"	# Get spaces at the beginning...
+			_if="${_if#"${_del}"}"		# ...and cut them
+			;;
+		esac
+		_dir="${_file%/*}"
+		case "${_dir}" in
+		    ( '' ) _dir="/" ;;
+		    ( "${_file}" ) _dir="$(pwd)" ;;
+		esac
+		_if="$(absolute_path "${_if}" "${_dir}")"
+		test -f "${_if}" || continue	# Ignore absent file
+		process_file "${_if}" || return 1
+		;;
+	    ( * ) printf "%s\n" "${_line}" ;;	# Just print line
+	esac
+    done < "${_file}"
+
+    # Remove from file names stack
+    _del="${PSTACK##*"|"}"
+    PSTACK="${PSTACK%"${_del}"*}"
+    PSTACK="${PSTACK%"|"*}"	# Remove trailing bar
+}
+
+####
+
+# Fill host list file
+mkhostlist ()
+{
+    local _e=""
+    local _f=""
+    local _elem=""
+
+    for _e in ${SE_HLIST} ; do
+	eval _elem=\"\${SE_HLIST_${_e}}\"
+	eval set -- ${_elem}
+	for _f in "$@" ; do
+	    case "${_e}" in
+		( H* ) printf "%s\n" "${_f}" >> "${W_HLIST}" ;;
+		( L* ) process_file  "${_f}" >> "${W_HLIST}" || return 1 ;;
+	    esac
+	done
+    done
+}
+
+# Fill command list file
+mkcmdlist ()
+{
+    local _e=""
+    local _f=""
+    local _elem=""
+
+    for _e in ${SE_CLIST} ; do
+	eval _elem=\"\${SE_CLIST_${_e}}\"
+	case "${_e}" in
+	    ( E* ) printf "%s\n" "${_elem}" >> "${W_CLIST}" ;;
+	    ( F* )
+		eval set -- ${_elem}
+		for _f in "$@" ; do
+		    cmd cat "${_f}" >> "${W_CLIST}" || return 1
+		done
+		;;
+	esac
+    done
+}
+
+# Execute commands from command list on hosts from host list
+execssh ()
+{
+    local _host=""
+
+    test -s "${W_CLIST}" ||
+	{ err "resulting command list is empty" ; return 1 ; }
+    test -s "${W_HLIST}" ||
+	{ err "resulting host list is empty" ; return 1 ; }
+
+    # Execute commands on hosts
+    while read -r _host ; do
+	eval "${SSH}" "${SE_SSHOPTS}" -T -l "${SE_USER}" "${_host}" < "${W_CLIST}"
+    done < "${W_HLIST}"
+}
+
+####
+
+# Initialization subroutine
+init ()
+{
+    set -o noglob	# Do not expand pathnames
+    # Initialize variables
+    var_init SE_CMD SE_CMDFILE SE_HOST SE_LIST SE_SSHOPTS SE_USER	&&
+    {
+	# Set defaults
+	DEF_SE_USER="$(cmd id -un)"
+	# Define 'internal' variables
+	SSH="$(command -v ssh)"
+	SE_CLIST=""
+	SE_HLIST=""
+	WORKDIR="${TMPDIR:-/tmp}/${PROG}.$$"
+	W_CLIST="${WORKDIR}/cmdlist"
+	W_HLIST="${WORKDIR}/hostlist"
+	PSTACK=""
+    } &&
+    # Set up configuration file variables
+    var_init CONF_FILE		&&
+    DEF_CONF_FILE="spxshell/sysexec.conf"	&&
+    # Get options
+    get_options "$@"		&&
+    # Read configuration file
+    var_set  CONF_FILE		&&
+    read_config "${CONF_FILE}"	&&
+    # Set variables
+    var_set  SE_CMD SE_CMDFILE SE_HOST SE_LIST SE_SSHOPTS SE_USER
+}
+
+# Startup subroutine
+startup ()
+{
+    local _e=""
+    local _f=""
+    local _list=""
+    local _flist=""
+    local _args=""
+
+    # Check 'ssh' executable
+    if test -z "${SSH}" ; then
+	err "'ssh' executable not found"
+	return 1
+    fi
+
+    # Check user
+    if test -z "${SE_USER}" ; then
+	err "empty value for 'user'"
+	return 1
+    fi
+
+    # Check command list
+    if test -z "${SE_CLIST}" ; then
+	# Add config and/or environment SE_CMD and SE_CMDLIST if set
+	test -n "${SE_CMD}" &&
+	{
+	    SE_CLIST_E1="${SE_CMD}"
+	    SE_CLIST="E1"
+	}
+	test -n "${SE_CMDFILE}" &&
+	{
+	    SE_CLIST_F2="${SE_CMDFILE}"
+	    SE_CLIST="${SE_CLIST:+"${SE_CLIST} "}F2"
+	}
+	if test -z "${SE_CLIST}" ; then
+	    err "neither 'command' nor 'cmdfile' is set"
+	    return 1
+	fi
+    fi
+
+    # Check host list
+    if test -z "${SE_HLIST}" ; then
+	# Add config and/or environment SE_HOST and SE_LIST if set
+	test -n "${SE_HOST}" &&
+	{
+	    SE_HLIST_H1="${SE_HOST}"
+	    SE_HLIST="H1"
+	}
+	test -n "${SE_LIST}" &&
+	{
+	    SE_HLIST_L2="${SE_LIST}"
+	    SE_HLIST="${SE_HLIST:+"${SE_HLIST} "}L2"
+	}
+	if test -z "${SE_HLIST}" ; then
+	    err "neither 'host' nor 'listfile' is set"
+	    return 1
+	fi
+    fi
+
+    # Check files in command and host lists for existance
+    #   convert to absolute paths and quote filenames with spaces
+    for _e in ${SE_CLIST} ${SE_HLIST} ; do
+	case "${_e}" in
+	    ( F* ) eval _list=\"SE_CLIST_${_e}\" ;;
+	    ( L* ) eval _list=\"SE_HLIST_${_e}\" ;;
+	    (  * ) continue ;;
+	esac
+	_flist=""
+	eval _args=\"\${${_list}}\"
+	eval set -- ${_args}
+	for _f in "$@" ; do
+	    _f="$(absolute_path "${_f}")" &&
+	    check_file "${_f}" || return 1
+	    case "${_f}" in ( *[[:space:]]* ) _f="\"${_f}\"" ;; esac
+	    _flist="${_flist:+"${_flist} "}${_f}"
+	done
+	eval ${_list}=\"\${_flist}\"
+    done
+
+    # Check working directory
+    ( umask 0077 ; check_dir "${WORKDIR}" ) || return 1
+    # Try to create working files
+    ( : > "${W_CLIST}" && : > "${W_HLIST}" ) 2>/dev/null ||
+    { err "can't create temporary files" ; return 1 ; }
+}
+
+# Clean up the staff
+cleanup ()
+{
+    if test -d "${WORKDIR}" ; then
+	cmd rm -f "${W_CLIST}" "${W_HLIST}"
+	cmd rmdir "${WORKDIR}"
+    fi
+}
+
+# Clean up the staff and exit with error
+clean_fail ()
+{
+    cleanup
+    fail "${1:-1}"
+}
+
+# Exit with error code
+fail ()
+{
+    exit "${1:-1}"
+}
+
+####
+
+# Main subroutine
+main ()
+{
+    init "$@" && startup || fail
+    trap 'clean_fail 130' HUP INT TERM
+    {
+	mkhostlist	&&
+	mkcmdlist	&&
+	execssh
+    } || clean_fail
+    cleanup
+}
+
+# Call main subroutine
+main "$@"
