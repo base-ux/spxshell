@@ -1,5 +1,5 @@
 #%shebang
-#%version 4
+#%version 5
 #
 # Delete core files
 #
@@ -83,7 +83,7 @@ delcore ()
 	_ifs="${IFS}" ; IFS=":"		# Save IFS and set to ':'
 	for _dir in ${DELCORE_DIRS} ; do
 	    if test -d "${_dir}" ; then
-		cmd find -H ${_dir} -xdev -type f -name core -exec rm -f {} \+
+		cmd find -H "${_dir}" -xdev -type f -name "core" -exec rm -f {} \+
 	    fi
 	done
 	IFS="${_ifs}"			# Restore IFS
@@ -95,12 +95,17 @@ delcore ()
 # Initialization subroutine
 init ()
 {
+    # Initialize variables
     var_init DELCORE_DIRS	&&
+    # Set up configuration file variables
     var_init CONF_FILE		&&
     DEF_CONF_FILE="spxshell/delcore.conf"	&&
+    # Get options
     get_options "$@"		&&
+    # Read configuration file
     var_set  CONF_FILE		&&
     read_config "${CONF_FILE}"	&&
+    # Set variables
     var_set  DELCORE_DIRS
 }
 
