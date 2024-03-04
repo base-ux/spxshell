@@ -1,5 +1,5 @@
 #%shebang
-#%version 6
+#%version 7
 #
 # Installation script
 #
@@ -27,11 +27,11 @@ spxgen.sh
 sysexec.sh
 "
 
-TSTDIRS="/usr/scripts:/usr/local/scripts:/usr/local/bin:${HOME}/bin"
+HOMEBIN="${HOME}/bin"
+TSTDIRS="/usr/scripts:/usr/local/scripts:/usr/local/bin:${HOMEBIN}"
 
 BINDIR=""
 LINKDIR=""
-LINK=""
 
 ####
 
@@ -74,7 +74,7 @@ install_files ()
 	_dst="${BINDIR}/${_f%.sh}"
 	copy_file "${_src}" "${_dst}" || { _rc=1 ; continue ; }
 	test -x "${_dst}" || cmd chmod +x "${_dst}"
-	if test "${LINK}" = "yes" ; then
+	if test -n "${LINKDIR}" ; then
 	    _link="${LINKDIR}/${_f%.sh}"
 	    link_file "${_dst}" "${_link}"
 	fi
@@ -94,15 +94,23 @@ startup ()
 	return 1
     fi
     case ":${PATH}:" in
-	( *":${BINDIR}:"* ) LINK="no" ;;
-	( * ) LINK="yes" ;;
+	( *":${BINDIR}:"* ) ;;
+	( * )
+	    test "${BINDIR}" = "${HOMEBIN}" ||
+	    {
+		# Choose directory for links
+		LINKDIR="$(test_dirs "${PATH}")"
+		test -n "${LINKDIR}" ||
+		{
+		    # If no writable directory in PATH
+		    # try to use HOME/bin directory only if it exist
+		    test -d "${HOMEBIN}" &&
+		    test -w "${HOMEBIN}" &&
+		    LINKDIR="${HOMEBIN}"
+		} || true
+	    }
+	    ;;
     esac
-
-    # Choose directory for links
-    if test "${LINK}" = "yes" ; then
-	LINKDIR="$(test_dirs "${PATH}")"
-	test -n "${LINKDIR}" || LINK="no"
-    fi
 }
 
 ####
