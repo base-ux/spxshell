@@ -1,5 +1,5 @@
 #%shebang
-#%version 1
+#%version 2
 #
 # Execute commands on remote host
 #
@@ -23,8 +23,7 @@
 usage ()
 {
     cat << EOF
-Usage: ${PROG} [-c config] [-h host]... [-l listfile]...
-	[-u user] [-o "sshopts"]...
+Usage: ${PROG} [options] [-u user] [-h host]... [-l listfile]...
 	{ [-e command]... [-f cmdfile]... | command }
 EOF
 }
@@ -37,15 +36,21 @@ usage_help ()
 
     Execute commands on remote host
 
-    -c config	configuration file
+    Main options:
+    -u user	user to login to the hosts (default: current user)
     -h host	host where the commands to be executed
     -l listfile	file with the list of hosts where the commands to be executed
-    -u user	user to login to the hosts
-    -o sshopts	options to 'ssh' command
     -e command	command to be executed on the hosts
     -f cmdfile	file with the list of commands to be executed on the hosts
 
+    Either '-h' or '-l' or their combination should be set.
     Either combination of '-e' and '-f' flags or just 'command' should be set.
+
+    Other options:
+    -c config	configuration file
+    -o sshopts	options to 'ssh' command
+    -q		print the resulting list of hosts (no commands execution)
+    -s		sort list of hosts
 EOF
     exit 0
 }
@@ -60,7 +65,7 @@ get_options ()
     local _hnum=0
 
     case "$1" in ( '-?' | '-help' | '--help' ) usage_help ;; esac
-    while getopts ":c:e:f:h:l:o:u:" _opt ; do
+    while getopts ":c:e:f:h:l:o:qsu:" _opt ; do
 	case "${_opt}" in
 	    ( 'c' ) OPT_CONF_FILE="$(absolute_path "${OPTARG}")" ;;
 	    ( 'e' )
@@ -88,6 +93,8 @@ get_options ()
 		SE_HLIST="${SE_HLIST:+"${SE_HLIST} "}L${_hnum}"
 		;;
 	    ( 'o' ) OPT_SE_SSHOPTS="${OPT_SE_SSHOPTS:+"${OPT_SE_SSHOPTS} "}${OPTARG}" ;;
+	    ( 'q' ) SE_PRINT="true" ;;
+	    ( 's' ) SE_SORT="true" ;;
 	    ( 'u' ) OPT_SE_USER="${OPTARG}" ;;
 	    ( ':' )
 		err "missing argument for option -- '${OPTARG}'"
@@ -164,27 +171,24 @@ process_file ()
 
 ####
 
-# Fill host list file
-mkhostlist ()
+# Execute commands from command list on hosts from host list
+exec_ssh ()
 {
-    local _e=""
-    local _f=""
-    local _elem=""
+    local _host=""
 
-    for _e in ${SE_HLIST} ; do
-	eval _elem=\"\${SE_HLIST_${_e}}\"
-	eval set -- ${_elem}
-	for _f in "$@" ; do
-	    case "${_e}" in
-		( H* ) printf "%s\n" "${_f}" >> "${W_HLIST}" ;;
-		( L* ) process_file  "${_f}" >> "${W_HLIST}" || return 1 ;;
-	    esac
-	done
-    done
+    test -s "${W_CLIST}" ||
+	{ err "resulting command list is empty" ; return 1 ; }
+    test -s "${W_HLIST}" ||
+	{ err "resulting host list is empty" ; return 1 ; }
+
+    # Execute commands on hosts
+    while read -r _host ; do
+	eval "${SSH}" "${SE_SSHOPTS}" -T -l "${SE_USER}" "${_host}" < "${W_CLIST}"
+    done < "${W_HLIST}"
 }
 
 # Fill command list file
-mkcmdlist ()
+mk_cmdlist ()
 {
     local _e=""
     local _f=""
@@ -204,76 +208,43 @@ mkcmdlist ()
     done
 }
 
-# Execute commands from command list on hosts from host list
-execssh ()
+# Fill host list file
+mk_hostlist ()
 {
-    local _host=""
+    local _e=""
+    local _f=""
+    local _elem=""
 
-    test -s "${W_CLIST}" ||
-	{ err "resulting command list is empty" ; return 1 ; }
+    for _e in ${SE_HLIST} ; do
+	eval _elem=\"\${SE_HLIST_${_e}}\"
+	eval set -- ${_elem}
+	for _f in "$@" ; do
+	    case "${_e}" in
+		( H* ) printf "%s\n" "${_f}" >> "${W_HLIST}" ;;
+		( L* ) process_file  "${_f}" >> "${W_HLIST}" || return 1 ;;
+	    esac
+	done
+    done
+    if test -n "${SE_SORT}" ; then
+	# Sort host list file in place
+	cmd sort -u -o "${W_HLIST}" "${W_HLIST}" || return 1
+    fi
+}
+
+# Print host list file
+print_hostlist ()
+{
     test -s "${W_HLIST}" ||
 	{ err "resulting host list is empty" ; return 1 ; }
 
-    # Execute commands on hosts
-    while read -r _host ; do
-	eval "${SSH}" "${SE_SSHOPTS}" -T -l "${SE_USER}" "${_host}" < "${W_CLIST}"
-    done < "${W_HLIST}"
+    cmd cat "${W_HLIST}" || return 1
 }
 
 ####
 
-# Initialization subroutine
-init ()
+# Check command list
+check_cmdlist ()
 {
-    set -o noglob	# Do not expand pathnames
-    # Initialize variables
-    var_init SE_CMD SE_CMDFILE SE_HOST SE_LIST SE_SSHOPTS SE_USER	&&
-    {
-	# Set defaults
-	DEF_SE_USER="$(cmd id -un)"
-	# Define 'internal' variables
-	SSH="$(command -v ssh)"
-	SE_CLIST=""
-	SE_HLIST=""
-	WORKDIR="${TMPDIR:-/tmp}/${PROG}.$$"
-	W_CLIST="${WORKDIR}/cmdlist"
-	W_HLIST="${WORKDIR}/hostlist"
-	PSTACK=""
-    } &&
-    # Set up configuration file variables
-    var_init CONF_FILE		&&
-    DEF_CONF_FILE="spxshell/sysexec.conf"	&&
-    # Get options
-    get_options "$@"		&&
-    # Read configuration file
-    var_set  CONF_FILE		&&
-    read_config "${CONF_FILE}"	&&
-    # Set variables
-    var_set  SE_CMD SE_CMDFILE SE_HOST SE_LIST SE_SSHOPTS SE_USER
-}
-
-# Startup subroutine
-startup ()
-{
-    local _e=""
-    local _f=""
-    local _list=""
-    local _flist=""
-    local _args=""
-
-    # Check 'ssh' executable
-    if test -z "${SSH}" ; then
-	err "'ssh' executable not found"
-	return 1
-    fi
-
-    # Check user
-    if test -z "${SE_USER}" ; then
-	err "empty value for 'user'"
-	return 1
-    fi
-
-    # Check command list
     if test -z "${SE_CLIST}" ; then
 	# Add config and/or environment SE_CMD and SE_CMDLIST if set
 	test -n "${SE_CMD}" &&
@@ -291,8 +262,11 @@ startup ()
 	    return 1
 	fi
     fi
+}
 
-    # Check host list
+# Check host list
+check_hostlist ()
+{
     if test -z "${SE_HLIST}" ; then
 	# Add config and/or environment SE_HOST and SE_LIST if set
 	test -n "${SE_HOST}" &&
@@ -310,9 +284,17 @@ startup ()
 	    return 1
 	fi
     fi
+}
 
-    # Check files in command and host lists for existance
-    #   convert to absolute paths and quote filenames with spaces
+# Search and check files in cmd and host lists
+search_files ()
+{
+    local _e=""
+    local _f=""
+    local _list=""
+    local _flist=""
+    local _args=""
+
     for _e in ${SE_CLIST} ${SE_HLIST} ; do
 	case "${_e}" in
 	    ( F* ) eval _list=\"SE_CLIST_${_e}\" ;;
@@ -330,6 +312,68 @@ startup ()
 	done
 	eval ${_list}=\"\${_flist}\"
     done
+}
+
+####
+
+# Initialization subroutine
+init ()
+{
+    set -o noglob	# Do not expand pathnames
+    # Initialize variables
+    var_init SE_CMD SE_CMDFILE SE_HOST SE_LIST SE_SSHOPTS SE_USER	&&
+    {
+	# Set defaults
+	DEF_SE_USER="$(cmd id -un)"
+	# Define 'internal' variables
+	SSH="$(command -v ssh)"
+	WORKDIR="${TMPDIR:-/tmp}/${PROG}.$$"
+	W_CLIST="${WORKDIR}/cmdlist"
+	W_HLIST="${WORKDIR}/hostlist"
+	SE_CLIST=""
+	SE_HLIST=""
+	SE_PRINT=""
+	SE_SORT=""
+	PSTACK=""
+    } &&
+    # Set up configuration file variables
+    var_init CONF_FILE		&&
+    DEF_CONF_FILE="spxshell/sysexec.conf"	&&
+    # Get options
+    get_options "$@"		&&
+    # Read configuration file
+    var_set  CONF_FILE		&&
+    read_config "${CONF_FILE}"	&&
+    # Set variables
+    var_set  SE_CMD SE_CMDFILE SE_HOST SE_LIST SE_SSHOPTS SE_USER
+}
+
+# Startup subroutine
+startup ()
+{
+    # Check 'ssh' executable
+    if test -z "${SSH}" ; then
+	err "'ssh' executable not found"
+	return 1
+    fi
+
+    # Check user
+    if test -z "${SE_USER}" ; then
+	err "empty value for 'user'"
+	return 1
+    fi
+
+    # Check command list if no '-q' option is set
+    if test -z "${SE_PRINT}" ; then
+	check_cmdlist || return 1
+    fi
+
+    # Check host list
+    check_hostlist || return 1
+
+    # Search and check files in command and host lists for existance
+    #   convert to absolute paths and quote filenames with spaces
+    search_files || return 1
 
     # Check working directory
     ( umask 0077 ; check_dir "${WORKDIR}" ) || return 1
@@ -368,9 +412,12 @@ main ()
     init "$@" && startup || fail
     trap 'clean_fail 130' HUP INT TERM
     {
-	mkhostlist	&&
-	mkcmdlist	&&
-	execssh
+	mk_hostlist	&&
+	if test -n "${SE_PRINT}" ; then
+	    print_hostlist
+	else
+	    mk_cmdlist && exec_ssh
+	fi
     } || clean_fail
     cleanup
 }
