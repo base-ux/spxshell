@@ -1,5 +1,5 @@
 #%shebang
-#%version 7
+#%version 8
 #
 # Installation script
 #
@@ -21,6 +21,7 @@ SRCDIR="$(cd -- "$(dirname -- "$0")" ; pwd)"
 SRCFILES="
 delcore.sh
 mkdeploy.sh
+mkhlist.sh
 nmon-cleanup.sh
 nmon-collect.sh
 spxgen.sh
