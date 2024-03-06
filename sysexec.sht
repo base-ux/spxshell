@@ -1,5 +1,5 @@
 #%shebang
-#%version 2
+#%version 3
 #
 # Execute commands on remote host
 #
@@ -47,6 +47,9 @@ usage_help ()
     Either combination of '-e' and '-f' flags or just 'command' should be set.
 
     Other options:
+    -C path	common search path for 'listfile' and 'cmdfile' (colon separated)
+    -F path	search path for 'cmdfile' (colon separated)
+    -L path	search path for 'listfile' (colon separated)
     -c config	configuration file
     -o sshopts	options to 'ssh' command
     -q		print the resulting list of hosts (no commands execution)
@@ -65,8 +68,11 @@ get_options ()
     local _hnum=0
 
     case "$1" in ( '-?' | '-help' | '--help' ) usage_help ;; esac
-    while getopts ":c:e:f:h:l:o:qsu:" _opt ; do
+    while getopts ":C:F:L:c:e:f:h:l:o:qsu:" _opt ; do
 	case "${_opt}" in
+	    ( 'C' ) OPT_SE_CPATH="${OPT_SE_CPATH:+${OPT_SE_CPATH}:}${OPTARG}" ;;
+	    ( 'F' ) OPT_SE_FPATH="${OPT_SE_FPATH:+${OPT_SE_FPATH}:}${OPTARG}" ;;
+	    ( 'L' ) OPT_SE_LPATH="${OPT_SE_LPATH:+${OPT_SE_LPATH}:}${OPTARG}" ;;
 	    ( 'c' ) OPT_CONF_FILE="$(absolute_path "${OPTARG}")" ;;
 	    ( 'e' )
 		test -n "${OPTARG}" || continue
@@ -242,6 +248,27 @@ print_hostlist ()
 
 ####
 
+# Check directories in SE_XPATH and return list of existing directories
+check_paths ()
+{
+    local _xpath="$1"
+    local _npath=""
+    local _dir=""
+    local _ifs=""
+
+    if test -n "${_xpath}" ; then
+	_ifs="${IFS}" ; IFS=":"		# Save IFS and set to ':'
+	for _dir in ${_xpath} ; do
+	    case ":${_npath}:" in
+		( *":${_dir}:"* ) continue ;;
+	    esac
+	    test -d "${_dir}" && _npath="${_npath:+${_npath}:}${_dir}"
+	done
+	IFS="${_ifs}"			# Restore IFS
+	printf "%s" "${_npath}"
+    fi
+}
+
 # Check command list
 check_cmdlist ()
 {
@@ -262,6 +289,10 @@ check_cmdlist ()
 	    return 1
 	fi
     fi
+    # Normalize SE_FPATH
+    test -n "${SE_FPATH}" &&
+    SE_FPATH="$(check_paths "${SE_FPATH}${SE_CPATH:+:${SE_CPATH}}")" ||
+    SE_FPATH="$(check_paths "${SE_CPATH}")"
 }
 
 # Check host list
@@ -284,6 +315,10 @@ check_hostlist ()
 	    return 1
 	fi
     fi
+    # Normalize SE_LPATH
+    test -n "${SE_LPATH}" &&
+    SE_LPATH="$(check_paths "${SE_LPATH}${SE_CPATH:+:${SE_CPATH}}")" ||
+    SE_LPATH="$(check_paths "${SE_CPATH}")"
 }
 
 # Search and check files in cmd and host lists
@@ -291,24 +326,55 @@ search_files ()
 {
     local _e=""
     local _f=""
+    local _nf=""
     local _list=""
+    local _elist=""
     local _flist=""
+    local _path=""
+    local _dir=""
     local _args=""
 
-    for _e in ${SE_CLIST} ${SE_HLIST} ; do
+    _elist="${SE_HLIST}"
+    test -n "${SE_PRINT}" || _elist="${_elist} ${SE_CLIST}"
+    for _e in ${_elist} ; do
 	case "${_e}" in
-	    ( F* ) eval _list=\"SE_CLIST_${_e}\" ;;
-	    ( L* ) eval _list=\"SE_HLIST_${_e}\" ;;
+	    ( F* ) eval _list=\"SE_CLIST_${_e}\" ; _path="${SE_FPATH}" ;;
+	    ( L* ) eval _list=\"SE_HLIST_${_e}\" ; _path="${SE_LPATH}" ;;
 	    (  * ) continue ;;
 	esac
 	_flist=""
 	eval _args=\"\${${_list}}\"
 	eval set -- ${_args}
 	for _f in "$@" ; do
-	    _f="$(absolute_path "${_f}")" &&
-	    check_file "${_f}" || return 1
-	    case "${_f}" in ( *[[:space:]]* ) _f="\"${_f}\"" ;; esac
-	    _flist="${_flist:+"${_flist} "}${_f}"
+	    _nf=""
+	    case "${_f}" in
+		( /* ) test -f "${_f}" && _nf="$(absolute_path "${_f}")" ;;
+		(  * )
+		    if test -f "${_f}" ; then
+			# First check file 'as is'
+			_nf="$(absolute_path "${_f}")"
+		    elif test -n "${_path}" ; then
+			# Search file in search directories
+			_ifs="${IFS}" ; IFS=":"
+			for _dir in ${_path} ; do
+			    if test -f "${_dir}/${_f}" ; then
+				_nf="$(absolute_path "${_f}" "${_dir}")"
+				break	# Found
+			    fi
+			done
+			IFS="${_ifs}"
+		    fi
+		    ;;
+	    esac
+	    if test -z "${_nf}" ; then
+		err "file '${_f}' not found"
+		return 1
+	    fi
+
+	    # Quote file name with spaces
+	    case "${_nf}" in ( *[[:space:]]* ) _nf="\"${_nf}\"" ;; esac
+	    # Add file name to list
+	    _flist="${_flist:+"${_flist} "}${_nf}"
 	done
 	eval ${_list}=\"\${_flist}\"
     done
@@ -321,7 +387,8 @@ init ()
 {
     set -o noglob	# Do not expand pathnames
     # Initialize variables
-    var_init SE_CMD SE_CMDFILE SE_HOST SE_LIST SE_SSHOPTS SE_USER	&&
+    var_init SE_CMD SE_CMDFILE SE_HOST SE_LIST SE_SSHOPTS SE_USER \
+	     SE_CPATH SE_FPATH SE_LPATH		&&
     {
 	# Set defaults
 	DEF_SE_USER="$(cmd id -un)"
@@ -345,7 +412,8 @@ init ()
     var_set  CONF_FILE		&&
     read_config "${CONF_FILE}"	&&
     # Set variables
-    var_set  SE_CMD SE_CMDFILE SE_HOST SE_LIST SE_SSHOPTS SE_USER
+    var_set  SE_CMD SE_CMDFILE SE_HOST SE_LIST SE_SSHOPTS SE_USER \
+	     SE_CPATH SE_FPATH SE_LPATH
 }
 
 # Startup subroutine
