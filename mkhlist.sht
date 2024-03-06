@@ -1,0 +1,159 @@
+#%shebang
+#%version 1
+#
+# Generate host lists from master file
+#
+
+#%prolog
+
+################
+
+#%include sys/checkdir
+#%include sys/checkfile
+#%include sys/cmd
+#%include sys/config
+#%include sys/msg
+#%include sys/pathabs
+#%include sys/vars
+
+################
+
+#%embed mkhlist.awk mkhlist mkhlist.awk
+
+################
+
+# Print usage information
+usage ()
+{
+    cat << EOF
+Usage: ${PROG} [-c config] [-r] -d outdir -f file
+EOF
+}
+
+# Print help information
+usage_help ()
+{
+    usage
+    cat << EOF
+
+    Generate host lists from master file
+
+    -c config	configuration file
+    -d outdir	output directory
+    -f file	source file
+    -r		clean up output directory first
+EOF
+    exit 0
+}
+
+####
+
+# Parse command line options
+get_options ()
+{
+    local _opt=""
+
+    case "$1" in ( '-?' | '-help' | '--help' ) usage_help ;; esac
+    while getopts ":c:d:f:r" _opt ; do
+	case "${_opt}" in
+	    ( 'c' ) OPT_CONF_FILE="$(absolute_path "${OPTARG}")" ;;
+	    ( 'd' ) OPT_OUTPUT_DIR="${OPTARG}"  ;;
+	    ( 'f' ) OPT_MASTER_LIST="${OPTARG}" ;;
+	    ( 'r' ) OPT_CLEANUP="true" ;;
+	    ( ':' )
+		err "missing argument for option -- '${OPTARG}'"
+		usage ; return 1 ;;
+	    ( '?' )
+		err "unknown option -- '${OPTARG}'"
+		usage ; return 1 ;;
+	    (  *  )
+		err "no handler for option '${_opt}'"
+		return 1 ;;
+	esac
+    done
+    shift $((${OPTIND} - 1))
+    if test $# -ne 0 ; then
+	err "too many arguments"
+	usage
+	return 1
+    fi
+}
+
+####
+
+# Generate host lists
+mk_hlist ()
+{
+    embed_mkhlist | awk -F ':' -f - -v OUT_DIR="${OUTPUT_DIR}" "${MASTER_LIST}"
+}
+
+####
+
+# Cleanup directory
+cleanup_dir ()
+{
+    local _dir="$1"
+
+    test -n "${_dir}" || return 1
+    cmd find "${_dir}" -depth ! -type d -exec rm -f {} \+	&&
+    cmd find "${_dir}" -depth ! -path "${_dir}" -type d -exec rmdir {} \+
+}
+
+####
+
+# Initialization subroutine
+init ()
+{
+    # Initialize variables
+    var_init MASTER_LIST OUTPUT_DIR CLEANUP	&&
+    # Set up configuration file variables
+    var_init CONF_FILE			&&
+    DEF_CONF_FILE="spxshell/mkhlist.conf"	&&
+    # Get options
+    get_options "$@"			&&
+    # Read configuration file
+    var_set  CONF_FILE			&&
+    read_config "${CONF_FILE}"		&&
+    # Set variables
+    var_set  MASTER_LIST OUTPUT_DIR CLEANUP
+}
+
+# Startup subroutine
+startup ()
+{
+    # Check file
+    test -n "${MASTER_LIST}" || { err "empty value for 'file'" ; return 1 ; }
+    case "${MASTER_LIST}" in
+	( '~/'* ) MASTER_LIST="${HOME}/${MASTER_LIST#\~/}" ;;
+    esac
+    check_file "${MASTER_LIST}" || return 1
+
+    # Check directory
+    test -n "${OUTPUT_DIR}" || { err "empty value for 'outdir'" ; return 1 ; }
+    case "${OUTPUT_DIR}" in
+	( '~/'* ) OUTPUT_DIR="${HOME}/${OUTPUT_DIR#\~/}" ;;
+    esac
+    check_dir "${OUTPUT_DIR}" || return 1
+
+    # Cleanup directory as requested
+    if test -n "${CLEANUP}" ; then
+	cleanup_dir "${OUTPUT_DIR}" || return 1
+    fi
+}
+
+# Exit with error code
+fail ()
+{
+    exit "${1:-1}"
+}
+
+####
+
+# Main subroutine
+main ()
+{
+    init "$@" && startup && mk_hlist || fail
+}
+
+# Call main subroutine
+main "$@"
