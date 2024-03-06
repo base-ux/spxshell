@@ -1,5 +1,5 @@
 #%shebang
-#%version 3
+#%version 4
 #
 # Execute commands on remote host
 #
@@ -259,9 +259,13 @@ check_paths ()
     if test -n "${_xpath}" ; then
 	_ifs="${IFS}" ; IFS=":"		# Save IFS and set to ':'
 	for _dir in ${_xpath} ; do
+	    # Convert tilde to HOME
+	    case "${_dir}" in ( '~/'* ) _dir="${HOME}/${_dir#\~/}" ;; esac
+	    # Check for duplicates
 	    case ":${_npath}:" in
 		( *":${_dir}:"* ) continue ;;
 	    esac
+	    # Check directory
 	    test -d "${_dir}" && _npath="${_npath:+${_npath}:}${_dir}"
 	done
 	IFS="${_ifs}"			# Restore IFS
@@ -347,6 +351,8 @@ search_files ()
 	eval set -- ${_args}
 	for _f in "$@" ; do
 	    _nf=""
+	    # Convert tilde to HOME
+	    case "${_f}" in ( '~/'* ) _f="${HOME}/${_f#\~/}" ;; esac
 	    case "${_f}" in
 		( /* ) test -f "${_f}" && _nf="$(absolute_path "${_f}")" ;;
 		(  * )
