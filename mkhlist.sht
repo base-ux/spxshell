@@ -1,5 +1,5 @@
 #%shebang
-#%version 2
+#%version 3
 #
 # Generate host lists from master file
 #
@@ -14,6 +14,7 @@
 #%include sys/config
 #%include sys/msg
 #%include sys/pathabs
+#%include sys/pathtilde
 #%include sys/vars
 
 ################
@@ -123,18 +124,12 @@ startup ()
 {
     # Check file
     test -n "${MASTER_LIST}" || { err "empty value for 'file'" ; return 1 ; }
-    case "${MASTER_LIST}" in
-	# Convert tilde to HOME
-	( '~/'* ) MASTER_LIST="${HOME}/${MASTER_LIST#\~/}" ;;
-    esac
+    MASTER_LIST="$(tilde_path "${MASTER_LIST}")"
     check_file "${MASTER_LIST}" || return 1
 
     # Check directory
     test -n "${OUTPUT_DIR}" || { err "empty value for 'outdir'" ; return 1 ; }
-    case "${OUTPUT_DIR}" in
-	# Convert tilde to HOME
-	( '~/'* ) OUTPUT_DIR="${HOME}/${OUTPUT_DIR#\~/}" ;;
-    esac
+    OUTPUT_DIR="$(tilde_path "${OUTPUT_DIR}")"
     check_dir "${OUTPUT_DIR}" || return 1
 
     # Cleanup directory as requested

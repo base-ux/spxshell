@@ -1,5 +1,5 @@
 #%shebang
-#%version 5
+#%version 6
 #
 # Execute commands on remote host
 #
@@ -15,6 +15,7 @@
 #%include sys/msg
 #%include sys/pathabs
 #%include sys/pathcanon
+#%include sys/pathtilde
 #%include sys/vars
 
 ################
@@ -262,8 +263,7 @@ check_paths ()
     if test -n "${_xpath}" ; then
 	_ifs="${IFS}" ; IFS=":"		# Save IFS and set to ':'
 	for _dir in ${_xpath} ; do
-	    # Convert tilde to HOME
-	    case "${_dir}" in ( '~/'* ) _dir="${HOME}/${_dir#\~/}" ;; esac
+	    _dir="$(tilde_path "${_dir}")"
 	    # Check for duplicates
 	    case ":${_npath}:" in
 		( *":${_dir}:"* ) continue ;;
@@ -354,8 +354,7 @@ search_files ()
 	eval set -- ${_args}
 	for _f in "$@" ; do
 	    _nf=""
-	    # Convert tilde to HOME
-	    case "${_f}" in ( '~/'* ) _f="${HOME}/${_f#\~/}" ;; esac
+	    _f="$(tilde_path "${_f}")"
 	    case "${_f}" in
 		( /* ) test -f "${_f}" && _nf="$(absolute_path "${_f}")" ;;
 		(  * )
