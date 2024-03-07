@@ -1,5 +1,5 @@
 #%shebang
-#%version 6
+#%version 7
 #
 # Execute commands on remote host
 #
@@ -48,11 +48,12 @@ usage_help ()
     Either combination of '-e' and '-f' flags or just 'command' should be set.
 
     Other options:
+    -c config	configuration file
     -C path	common search path for 'listfile' and 'cmdfile' (colon separated)
     -F path	search path for 'cmdfile' (colon separated)
     -L path	search path for 'listfile' (colon separated)
-    -c config	configuration file
-    -o sshopts	options to 'ssh' command
+    -O sshopts	options to 'ssh' command
+    -o outfile	output file or 'pattern' (%h is host, %u is user)
     -q		print the resulting list of hosts (no commands execution)
     -s		sort list of hosts
     -v		print host name before execution
@@ -75,6 +76,7 @@ get_options ()
 	    ( 'C' ) OPT_SE_CPATH="${OPT_SE_CPATH:+${OPT_SE_CPATH}:}${OPTARG}" ;;
 	    ( 'F' ) OPT_SE_FPATH="${OPT_SE_FPATH:+${OPT_SE_FPATH}:}${OPTARG}" ;;
 	    ( 'L' ) OPT_SE_LPATH="${OPT_SE_LPATH:+${OPT_SE_LPATH}:}${OPTARG}" ;;
+	    ( 'O' ) OPT_SE_SSHOPTS="${OPT_SE_SSHOPTS:+"${OPT_SE_SSHOPTS} "}${OPTARG}" ;;
 	    ( 'c' ) OPT_CONF_FILE="$(absolute_path "${OPTARG}")" ;;
 	    ( 'e' )
 		test -n "${OPTARG}" || continue
@@ -100,7 +102,7 @@ get_options ()
 		eval SE_HLIST_L${_hnum}=\"\${OPTARG}\"
 		SE_HLIST="${SE_HLIST:+"${SE_HLIST} "}L${_hnum}"
 		;;
-	    ( 'o' ) OPT_SE_SSHOPTS="${OPT_SE_SSHOPTS:+"${OPT_SE_SSHOPTS} "}${OPTARG}" ;;
+	    ( 'o' ) OPT_SE_OUTFILE="${OPTARG}" ;;
 	    ( 'q' ) SE_PRINT="true" ;;
 	    ( 's' ) SE_SORT="true" ;;
 	    ( 'u' ) OPT_SE_USER="${OPTARG}" ;;
@@ -184,16 +186,52 @@ process_file ()
 exec_ssh ()
 {
     local _host=""
+    local _of=""
+    local _dir=""
 
     test -s "${W_CLIST}" ||
 	{ err "resulting command list is empty" ; return 1 ; }
     test -s "${W_HLIST}" ||
 	{ err "resulting host list is empty" ; return 1 ; }
 
+    # Try to create output file if 'outfile' is not pattern
+    if test -z "${SE_PATTERN}" ; then
+	( : > "${SE_OUTFILE}" ) 2>/dev/null ||
+	    { err "can't create file '${SE_OUTFILE}'" ; return 1 ; }
+    fi
+
     # Execute commands on hosts
     while read -r _host ; do
+	# If 'outfile' is pattern then convert it and try to create output file
+	_of="${SE_OUTFILE}"
+	if test -n "${SE_PATTERN}" ; then
+	    while : ; do
+		case "${_of}" in
+		    ( *'%h'* ) _of="${_of%%\%h*}${_host}${_of#*\%h}"   ;;
+		    ( *'%u'* ) _of="${_of%%\%u*}${SE_USER}${_of#*\%u}" ;;
+		    ( * ) break ;;
+		esac
+	    done
+	    _of="$(absolute_path "${_of}")"
+	    # Try to create intermediate directories
+	    _dir="${_of%/*}"
+	    check_dir "${_dir:-/}" || return 1
+	    # Try to create output file
+	    ( : > "${_of}" ) 2>/dev/null ||
+		{ err "can't create file '${_of}'" ; return 1 ; }
+	fi
+
+	# Print host name if verbose
 	test -n "${SE_VERBOSE}" && printf "%s\n" "${_host}"
-	eval "${SSH}" "${SE_SSHOPTS}" -T -l "${SE_USER}" "${_host}" < "${W_CLIST}"
+
+	# Redirect input and output
+	exec 4<&0 0< "${W_CLIST}" 5>&1 1>> "${_of}"
+
+	# Finally execute 'ssh'
+	eval "${SSH}" "${SE_SSHOPTS}" -T -l "${SE_USER}" "${_host}"
+
+	# Restore input and output
+	exec 0<&4 4<&- 1>&5 5>&-
     done < "${W_HLIST}"
 }
 
@@ -396,9 +434,10 @@ init ()
     set -o noglob	# Do not expand pathnames
     # Initialize variables
     var_init SE_CMD SE_CMDFILE SE_HOST SE_LIST SE_SSHOPTS SE_USER \
-	     SE_CPATH SE_FPATH SE_LPATH		&&
+	     SE_OUTFILE SE_CPATH SE_FPATH SE_LPATH		&&
     {
 	# Set defaults
+	DEF_SE_OUTFILE="/dev/stdout"
 	DEF_SE_USER="$(cmd id -un)"
 	# Define 'internal' variables
 	SSH="$(command -v ssh)"
@@ -408,6 +447,7 @@ init ()
 	PSTACK=""
 	SE_CLIST=""
 	SE_HLIST=""
+	SE_PATTERN=""
 	SE_PRINT=""
 	SE_SORT=""
 	SE_VERBOSE=""
@@ -422,7 +462,7 @@ init ()
     read_config "${CONF_FILE}"	&&
     # Set variables
     var_set  SE_CMD SE_CMDFILE SE_HOST SE_LIST SE_SSHOPTS SE_USER \
-	     SE_CPATH SE_FPATH SE_LPATH
+	     SE_OUTFILE SE_CPATH SE_FPATH SE_LPATH
 }
 
 # Startup subroutine
@@ -451,6 +491,13 @@ startup ()
     # Search and check files in command and host lists for existance
     #   convert to absolute paths and quote filenames with spaces
     search_files || return 1
+
+    # Check 'outfile' option
+    SE_OUTFILE="$(tilde_path "${SE_OUTFILE}")"
+    case "${SE_OUTFILE}" in
+	( *'%h'* | *'%u'* ) SE_PATTERN="true" ;;
+	( * ) SE_OUTFILE="$(absolute_path "${SE_OUTFILE}")" ;;
+    esac
 
     # Check working directory
     ( umask 0077 ; check_dir "${WORKDIR}" ) || return 1
