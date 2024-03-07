@@ -1,5 +1,5 @@
 #%shebang
-#%version 1
+#%version 2
 #
 # Generate host lists from master file
 #
@@ -124,6 +124,7 @@ startup ()
     # Check file
     test -n "${MASTER_LIST}" || { err "empty value for 'file'" ; return 1 ; }
     case "${MASTER_LIST}" in
+	# Convert tilde to HOME
 	( '~/'* ) MASTER_LIST="${HOME}/${MASTER_LIST#\~/}" ;;
     esac
     check_file "${MASTER_LIST}" || return 1
@@ -131,14 +132,16 @@ startup ()
     # Check directory
     test -n "${OUTPUT_DIR}" || { err "empty value for 'outdir'" ; return 1 ; }
     case "${OUTPUT_DIR}" in
+	# Convert tilde to HOME
 	( '~/'* ) OUTPUT_DIR="${HOME}/${OUTPUT_DIR#\~/}" ;;
     esac
     check_dir "${OUTPUT_DIR}" || return 1
 
     # Cleanup directory as requested
-    if test -n "${CLEANUP}" ; then
-	cleanup_dir "${OUTPUT_DIR}" || return 1
-    fi
+    case "${CLEANUP}" in
+	( [Yy][Ee][Ss] | [Tt][Rr][Uu][Ee] | [Oo][Nn] | 1 )
+	    cleanup_dir "${OUTPUT_DIR}" || return 1 ;;
+    esac
 }
 
 # Exit with error code
