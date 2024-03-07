@@ -1,6 +1,6 @@
 #%shebang
 
-SPXGEN_VERSION="23"
+SPXGEN_VERSION="24"
 
 #%prolog
 
@@ -484,6 +484,7 @@ startup ()
     test -n "${PROLOG}"				&&
     test -n "${SHEBANG}"			&&
     OUTFILE="$(absolute_path "${OUTFILE}")"	&&
+    ( : > "${OUTFILE}" ) 2>/dev/null		&&
     exec 3> "${OUTFILE}"
 }
 
