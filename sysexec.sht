@@ -1,5 +1,5 @@
 #%shebang
-#%version 4
+#%version 5
 #
 # Execute commands on remote host
 #
@@ -54,6 +54,7 @@ usage_help ()
     -o sshopts	options to 'ssh' command
     -q		print the resulting list of hosts (no commands execution)
     -s		sort list of hosts
+    -v		print host name before execution
 EOF
     exit 0
 }
@@ -68,7 +69,7 @@ get_options ()
     local _hnum=0
 
     case "$1" in ( '-?' | '-help' | '--help' ) usage_help ;; esac
-    while getopts ":C:F:L:c:e:f:h:l:o:qsu:" _opt ; do
+    while getopts ":C:F:L:c:e:f:h:l:o:qsu:v" _opt ; do
 	case "${_opt}" in
 	    ( 'C' ) OPT_SE_CPATH="${OPT_SE_CPATH:+${OPT_SE_CPATH}:}${OPTARG}" ;;
 	    ( 'F' ) OPT_SE_FPATH="${OPT_SE_FPATH:+${OPT_SE_FPATH}:}${OPTARG}" ;;
@@ -102,6 +103,7 @@ get_options ()
 	    ( 'q' ) SE_PRINT="true" ;;
 	    ( 's' ) SE_SORT="true" ;;
 	    ( 'u' ) OPT_SE_USER="${OPTARG}" ;;
+	    ( 'v' ) SE_VERBOSE="true" ;;
 	    ( ':' )
 		err "missing argument for option -- '${OPTARG}'"
 		usage ; return 1 ;;
@@ -189,6 +191,7 @@ exec_ssh ()
 
     # Execute commands on hosts
     while read -r _host ; do
+	test -n "${SE_VERBOSE}" && printf "%s\n" "${_host}"
 	eval "${SSH}" "${SE_SSHOPTS}" -T -l "${SE_USER}" "${_host}" < "${W_CLIST}"
     done < "${W_HLIST}"
 }
@@ -403,11 +406,12 @@ init ()
 	WORKDIR="${TMPDIR:-/tmp}/${PROG}.$$"
 	W_CLIST="${WORKDIR}/cmdlist"
 	W_HLIST="${WORKDIR}/hostlist"
+	PSTACK=""
 	SE_CLIST=""
 	SE_HLIST=""
 	SE_PRINT=""
 	SE_SORT=""
-	PSTACK=""
+	SE_VERBOSE=""
     } &&
     # Set up configuration file variables
     var_init CONF_FILE		&&
