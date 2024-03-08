@@ -1,5 +1,5 @@
 #%shebang
-#%version 8
+#%version 9
 #
 # Execute commands on remote host
 #
@@ -15,7 +15,6 @@
 #%include sys/msg
 #%include sys/pathabs
 #%include sys/pathcanon
-#%include sys/pathtilde
 #%include sys/vars
 
 ################
@@ -301,7 +300,7 @@ check_paths ()
     if test -n "${_xpath}" ; then
 	_ifs="${IFS}" ; IFS=":"		# Save IFS and set to ':'
 	for _dir in ${_xpath} ; do
-	    _dir="$(tilde_path "${_dir}")"
+	    _dir="$(absolute_path "${_dir}")"
 	    # Check for duplicates
 	    case ":${_npath}:" in
 		( *":${_dir}:"* ) continue ;;
@@ -378,6 +377,7 @@ search_files ()
     local _path=""
     local _dir=""
     local _args=""
+    local _ifs=""
 
     _elist="${SE_HLIST}"
     test -n "${F_PRINT}" || _elist="${_elist} ${SE_CLIST}"
@@ -392,7 +392,7 @@ search_files ()
 	eval set -- ${_args}
 	for _f in "$@" ; do
 	    _nf=""
-	    _f="$(tilde_path "${_f}")"
+	    case "${_f}" in ( '~/'* ) _f="${HOME%/}/${_f#\~/}" ;; esac
 	    case "${_f}" in
 		( /* ) test -f "${_f}" && _nf="$(absolute_path "${_f}")" ;;
 		(  * )
@@ -493,8 +493,9 @@ startup ()
     search_files || return 1
 
     # Check 'outfile' option
-    SE_OUTFILE="$(tilde_path "${SE_OUTFILE}")"
     case "${SE_OUTFILE}" in
+	( "${DEF_SE_OUTFILE}" ) ;;
+	( '' ) SE_OUTFILE="${DEF_SE_OUTFILE}" ;;
 	( *'%h'* | *'%u'* ) F_PATTERN="true" ;;
 	( * ) SE_OUTFILE="$(absolute_path "${SE_OUTFILE}")" ;;
     esac
