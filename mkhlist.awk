@@ -6,14 +6,16 @@ function write_lst (item, file) {
     if ( dir in dirs ) { ; } else {
 	# If dir is not in list then create it
 	dirs[dir] = "true"
-	cmd = "test -d " dir " || mkdir -p " dir
+	cmd = "test -d '" dir "' || mkdir -p '" dir "'"
 	system(cmd)
     }
     # Write item to file
     print item >> file
 }
+
 # Skip comments and empty lines
 $0 ~ /^(#|[[:space:]]*$)/ { next }
+
 # Otherwise process the line
 {
     item = $1
