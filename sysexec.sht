@@ -1,5 +1,5 @@
 #%shebang
-#%version 7
+#%version 8
 #
 # Execute commands on remote host
 #
@@ -103,10 +103,10 @@ get_options ()
 		SE_HLIST="${SE_HLIST:+"${SE_HLIST} "}L${_hnum}"
 		;;
 	    ( 'o' ) OPT_SE_OUTFILE="${OPTARG}" ;;
-	    ( 'q' ) SE_PRINT="true" ;;
-	    ( 's' ) SE_SORT="true" ;;
+	    ( 'q' ) F_PRINT="true" ;;
+	    ( 's' ) F_SORT="true" ;;
 	    ( 'u' ) OPT_SE_USER="${OPTARG}" ;;
-	    ( 'v' ) SE_VERBOSE="true" ;;
+	    ( 'v' ) F_VERBOSE="true" ;;
 	    ( ':' )
 		err "missing argument for option -- '${OPTARG}'"
 		usage ; return 1 ;;
@@ -195,7 +195,7 @@ exec_ssh ()
 	{ err "resulting host list is empty" ; return 1 ; }
 
     # Try to create output file if 'outfile' is not pattern
-    if test -z "${SE_PATTERN}" ; then
+    if test -z "${F_PATTERN}" ; then
 	( : > "${SE_OUTFILE}" ) 2>/dev/null ||
 	    { err "can't create file '${SE_OUTFILE}'" ; return 1 ; }
     fi
@@ -204,7 +204,7 @@ exec_ssh ()
     while read -r _host ; do
 	# If 'outfile' is pattern then convert it and try to create output file
 	_of="${SE_OUTFILE}"
-	if test -n "${SE_PATTERN}" ; then
+	if test -n "${F_PATTERN}" ; then
 	    while : ; do
 		case "${_of}" in
 		    ( *'%h'* ) _of="${_of%%\%h*}${_host}${_of#*\%h}"   ;;
@@ -222,7 +222,7 @@ exec_ssh ()
 	fi
 
 	# Print host name if verbose
-	test -n "${SE_VERBOSE}" && printf "%s\n" "${_host}"
+	test -n "${F_VERBOSE}" && printf "%s\n" "${_host}"
 
 	# Redirect input and output
 	exec 4<&0 0< "${W_CLIST}" 5>&1 1>> "${_of}"
@@ -273,7 +273,7 @@ mk_hostlist ()
 	    esac
 	done
     done
-    if test -n "${SE_SORT}" ; then
+    if test -n "${F_SORT}" ; then
 	# Sort host list file in place
 	cmd sort -u -o "${W_HLIST}" "${W_HLIST}" || return 1
     fi
@@ -380,7 +380,7 @@ search_files ()
     local _args=""
 
     _elist="${SE_HLIST}"
-    test -n "${SE_PRINT}" || _elist="${_elist} ${SE_CLIST}"
+    test -n "${F_PRINT}" || _elist="${_elist} ${SE_CLIST}"
     for _e in ${_elist} ; do
 	case "${_e}" in
 	    ( F* ) eval _list=\"SE_CLIST_${_e}\" ; _path="${SE_FPATH}" ;;
@@ -447,10 +447,10 @@ init ()
 	PSTACK=""
 	SE_CLIST=""
 	SE_HLIST=""
-	SE_PATTERN=""
-	SE_PRINT=""
-	SE_SORT=""
-	SE_VERBOSE=""
+	F_PATTERN=""
+	F_PRINT=""
+	F_SORT=""
+	F_VERBOSE=""
     } &&
     # Set up configuration file variables
     var_init CONF_FILE		&&
@@ -481,7 +481,7 @@ startup ()
     fi
 
     # Check command list if no '-q' option is set
-    if test -z "${SE_PRINT}" ; then
+    if test -z "${F_PRINT}" ; then
 	check_cmdlist || return 1
     fi
 
@@ -495,7 +495,7 @@ startup ()
     # Check 'outfile' option
     SE_OUTFILE="$(tilde_path "${SE_OUTFILE}")"
     case "${SE_OUTFILE}" in
-	( *'%h'* | *'%u'* ) SE_PATTERN="true" ;;
+	( *'%h'* | *'%u'* ) F_PATTERN="true" ;;
 	( * ) SE_OUTFILE="$(absolute_path "${SE_OUTFILE}")" ;;
     esac
 
@@ -537,7 +537,7 @@ main ()
     trap 'clean_fail 130' HUP INT TERM
     {
 	mk_hostlist	&&
-	if test -n "${SE_PRINT}" ; then
+	if test -n "${F_PRINT}" ; then
 	    print_hostlist
 	else
 	    mk_cmdlist && exec_ssh
