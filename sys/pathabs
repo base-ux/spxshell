@@ -18,21 +18,22 @@ absolute_path ()
 {
     local _p="$1"
     local _b="$2"
+    local _cwd=""
     local _e=""
     local _ap=""
 
     test -n "${_p}" || return 1
     case "${_p}" in
-	( /*    ) ;;	# Already begin with '/'
-	( '~'   ) _p="${HOME}" ;;
-	( '~/'* ) _p="${HOME}/${_p#\~/}" ;;
+	(  /* ) ;;
+	( '~' | '~/' ) _p="${HOME}" ;;
+	( '~/'* ) _p="${HOME%/}/${_p#\~/}" ;;
 	( * )
-	    # Check 'base' path. If not begin with '/' assume relative to PWD
+	    # Check 'base' path
 	    case "${_b}" in
-		( /*    ) ;;
-		( '~'   ) _b="${HOME}" ;;
-		( '~/'* ) _b="${HOME}/${_b#\~/}" ;;
-		( * ) _b="${PWD%/}/${_b}" ;;
+		( /* ) ;;
+		( '~' | '~/' ) _b="${HOME}" ;;
+		( '~/'* ) _b="${HOME%/}/${_b#\~/}" ;;
+		( * ) _cwd="$(pwd)" ; _b="${_cwd%/}/${_b}" ;;
 	    esac
 	    _p="${_b%/}/${_p}"	# Normalize path to begin with '/'
 	    ;;

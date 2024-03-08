@@ -2,7 +2,7 @@
 
 # Set variables
 PRODUCT="spxshell"
-VERSION="0.13.6"
+VERSION="0.13.7"
 
 PROG="$(basename -- "$0")"
 
