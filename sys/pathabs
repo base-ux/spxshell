@@ -23,10 +23,17 @@ absolute_path ()
 
     test -n "${_p}" || return 1
     case "${_p}" in
-	( /* ) ;;	# Already begin with '/'
-	(  * )
+	( /*    ) ;;	# Already begin with '/'
+	( '~'   ) _p="${HOME}" ;;
+	( '~/'* ) _p="${HOME}/${_p#\~/}" ;;
+	( * )
 	    # Check 'base' path. If not begin with '/' assume relative to PWD
-	    case "${_b}" in ( /* ) ;; ( * ) _b="${PWD%/}/${_b}" ;; esac
+	    case "${_b}" in
+		( /*    ) ;;
+		( '~'   ) _b="${HOME}" ;;
+		( '~/'* ) _b="${HOME}/${_b#\~/}" ;;
+		( * ) _b="${PWD%/}/${_b}" ;;
+	    esac
 	    _p="${_b%/}/${_p}"	# Normalize path to begin with '/'
 	    ;;
     esac
