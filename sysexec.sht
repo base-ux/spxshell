@@ -237,11 +237,6 @@ exec_ssh ()
     local _of=""
     local _dir=""
 
-    test -s "${W_CLIST}" ||
-	{ err "resulting command list is empty" ; return 1 ; }
-    test -s "${W_HLIST}" ||
-	{ err "resulting host list is empty" ; return 1 ; }
-
     # Try to create output file if 'outfile' is not pattern
     if test -z "${F_PATTERN}" ; then
 	( : > "${SE_OUTFILE}" ) 2>/dev/null ||
@@ -302,13 +297,15 @@ mk_cmdlist ()
 	case "${_e}" in
 	    ( E* ) printf "%s\n" "${_elem}" >> "${W_CLIST}" ;;
 	    ( F* )
-		eval set -- ${_elem}
+		eval set -- "${_elem}"
 		for _f in "$@" ; do
 		    cmd cat "${_f}" >> "${W_CLIST}" || return 1
 		done
 		;;
 	esac
     done
+    test -s "${W_CLIST}" ||
+	{ err "resulting command list is empty" ; return 1 ; }
 }
 
 # Fill host list file
@@ -320,7 +317,7 @@ mk_hostlist ()
 
     for _e in ${SE_HLIST} ; do
 	eval _elem=\"\${SE_HLIST_${_e}}\"
-	eval set -- ${_elem}
+	eval set -- "${_elem}"
 	for _f in "$@" ; do
 	    case "${_e}" in
 		( H* ) printf "%s\n" "${_f}" >> "${W_HLIST}" ;;
@@ -332,14 +329,13 @@ mk_hostlist ()
 	# Sort host list file in place
 	cmd sort -u -o "${W_HLIST}" "${W_HLIST}" || return 1
     fi
+    test -s "${W_HLIST}" ||
+	{ err "resulting host list is empty" ; return 1 ; }
 }
 
 # Print host list file
 print_hostlist ()
 {
-    test -s "${W_HLIST}" ||
-	{ err "resulting host list is empty" ; return 1 ; }
-
     cmd cat "${W_HLIST}" || return 1
 }
 
@@ -445,7 +441,7 @@ search_files ()
 	esac
 	_flist=""
 	eval _args=\"\${${_list}}\"
-	eval set -- ${_args}
+	eval set -- "${_args}"
 	for _f in "$@" ; do
 	    _nf=""
 	    case "${_f}" in ( '~/'* ) _f="${HOME%/}/${_f#\~/}" ;; esac
@@ -560,7 +556,7 @@ startup ()
     ( umask 0077 ; check_dir "${WORKDIR}" ) || return 1
     # Try to create working files
     ( : > "${W_CLIST}" && : > "${W_HLIST}" ) 2>/dev/null ||
-    { err "can't create temporary files" ; return 1 ; }
+	{ err "can't create temporary files" ; return 1 ; }
 }
 
 # Clean up the staff
