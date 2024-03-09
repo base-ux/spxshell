@@ -1,5 +1,5 @@
 #%shebang
-#%version 10
+#%version 11
 #
 # Execute commands on remote host
 #
@@ -134,25 +134,74 @@ get_options ()
 
 ####
 
+# Process line for host
+# return 1 for errors, 2 for warnings
+process_hline ()
+{
+    local _host="$1"
+    local _user="${SE_USER}"
+    local _of="${SE_OUTFILE}"
+    local _pre=""
+    local _post=""
+
+    # Check that line in format 'user@host'
+    case "${_host}" in
+	( *'@'* )
+	    _user="${_host%%\@*}" ; _host="${_host#*\@}"
+	    # Check user name
+	    case "${_user}" in
+		( '' ) _user="${SE_USER}" ;;
+		( *[[:space:]]* ) warn "username '${_user}' with spaces" ; return 2 ;;
+	    esac
+	    ;;
+    esac
+    # Check hostname
+    case "${_host}" in
+	( '' ) warn "empty hostname" ; return 2 ;;
+	( *[[:space:]]* ) warn "hostname '${_host}' with spaces" ; return 2 ;;
+    esac
+
+    # Get output file
+    if test -n "${F_FMTOUT}" ; then
+	_of="$(process_outfile "${_host}" "${_user}" "${SE_OUTFILE}")" ||
+	return 1
+    fi
+
+    # Get pre/post commands
+    if test -n "${F_FMTPRE}" ; then
+	_pre="$(process_prepost  "PRE"  "${_host}" "${_user}" "${_of}")" ||
+	return 1
+    fi
+    if test -n "${F_FMTPOST}" ; then
+	_post="$(process_prepost "POST" "${_host}" "${_user}" "${_of}")" ||
+	return 1
+    fi
+
+    printf "%s|%s|%s|%s|%s\n" "${_host}" "${_user}" "${_of}" "${_pre}" "${_post}"
+}
+
 # Process host list file
 process_hlist ()
 {
     local _file="$1"
+    local _ln=0
     local _cfile=""
     local _line=""
     local _if=""
     local _dir=""
     local _del=""
+    local _rc=0
 
     # Add canonical file name to stack
     _cfile="$(canonical_path "${_file}")"
     case "|${PSTACK}|" in
-	( *"|${_cfile}|"* ) return 0 ;;	# File already in process
+	( *"|${_cfile}|"* ) warn "cyclic include of file '${_file}'" ; return 2 ;;
 	( * ) PSTACK="${PSTACK:+${PSTACK}|}${_cfile}" ;;
     esac
 
     # Read file
     while read -r _line ; do
+	_ln="$(( ${_ln} + 1 ))"
 	case "${_line}" in
 	    ( '' | '#'* ) continue ;;	# Skip comments and empty lines
 	    ( '%'* )	# Include file
@@ -170,10 +219,18 @@ process_hlist ()
 		    ( "${_file}" ) _dir="$(pwd)" ;;
 		esac
 		_if="$(absolute_path "${_if}" "${_dir}")"
-		test -f "${_if}" || continue	# Ignore absent file
-		process_hlist "${_if}" || return 1
+		test -f "${_if}" ||
+		{
+		    warn "can't include file '${_if}' from '${_file}:${_ln}'"
+		    continue	# Ignore absent file
+		}
+		( process_hlist "${_if}" ) ; _rc=$?
 		;;
-	    ( * ) printf "%s\n" "${_line}" ;;	# Just print line
+	    ( * ) process_hline "${_line}" ; _rc=$? ;;
+	esac
+	case "${_rc}" in
+	    ( 1 ) err "processing error in file '${_file}:${_ln}'" ; return 1 ;;
+	    ( 2 ) warn "processing warning in file '${_file}:${_ln}'" ;;
 	esac
     done < "${_file}"
 
@@ -204,28 +261,38 @@ process_outfile ()
 # Execute pre/post command
 process_prepost ()
 {
-    local _cmd="$1"
+    local _x="$1"	# PRE or POST
     local _host="$2"
     local _user="$3"
     local _out="$4"
+    local _cmd=""
     local _c=""
+
+    eval _cmd=\"\${SE_${_x}EXEC}\"
+    eval _flag=\"\${F_FMT${_x}}\"
 
     # Expand patterns
     while : ; do
 	case "${_cmd}" in
-	    ( *'%h'* ) _cmd="${_cmd%%\%h*}\"${_host}\"${_cmd#*\%h}" ;;
-	    ( *'%u'* ) _cmd="${_cmd%%\%u*}\"${_user}\"${_cmd#*\%u}" ;;
-	    ( *'%o'* ) _cmd="${_cmd%%\%o*}\"${_out}\"${_cmd#*\%o}" ;;
+	    ( *'%h'* ) _cmd="${_cmd%%\%h*}${_host}${_cmd#*\%h}" ;;
+	    ( *'%u'* ) _cmd="${_cmd%%\%u*}${_user}${_cmd#*\%u}" ;;
+	    ( *'%o'* ) _cmd="${_cmd%%\%o*}${_out}${_cmd#*\%o}"  ;;
 	    ( * ) break ;;
 	esac
     done
 
-    # Check and execute command
-    eval set -- "${_cmd}"
-    _c="$(absolute_path "$1")" ; shift
-    test -f "${_c}" && test -x "${_c}" ||
-	{ err "can't find executable '${_c}'" ; return 1 ; }
-    "${_c}" "$@" || return 1
+    # Check if command is expanded
+    case "${_flag}" in
+	( "cmd" )
+	    # Command contains patterns so check executable
+	    eval set -- "${_cmd}"
+	    _c="$1" ; shift
+	    _cmd="$(check_exec "${_c}")" || return 1
+	    printf '"%s"' "${_cmd}"
+	    for _c in "$@" ; do printf ' "%s"' "${_c}" ; done
+	    ;;
+	( * ) printf "%s" "${_cmd}" ;;
+    esac
 }
 
 ####
@@ -234,35 +301,32 @@ process_prepost ()
 exec_ssh ()
 {
     local _host=""
+    local _user=""
     local _of=""
+    local _pre=""
+    local _post=""
     local _dir=""
 
     # Try to create output file if 'outfile' is not pattern
-    if test -z "${F_PATTERN}" ; then
+    if test -z "${F_FMTOUT}" ; then
 	( : > "${SE_OUTFILE}" ) 2>/dev/null ||
 	    { err "can't create file '${SE_OUTFILE}'" ; return 1 ; }
     fi
 
     # Execute commands on hosts
-    while read -r _host ; do
-	# Select output file
-	if test -n "${F_PATTERN}" ; then
-	    # If 'outfile' is pattern then convert it and try to create output file
-	    _of="$(process_outfile "${_host}" "${SE_USER}" "${SE_OUTFILE}")"
+    while IFS="|" read -r _host _user _of _pre _post ; do
+	if test -n "${F_FMTOUT}" ; then
 	    # Try to create intermediate directories
 	    _dir="${_of%/*}"
 	    check_dir "${_dir:-/}" || return 1
 	    # Try to create output file
 	    ( : > "${_of}" ) 2>/dev/null ||
 		{ err "can't create file '${_of}'" ; return 1 ; }
-	else
-	    _of="${SE_OUTFILE}"
 	fi
 
 	# Execute pre-exec command
-	if test -n "${SE_PREEXEC}" ; then
-	    process_prepost "${SE_PREEXEC}" "${_host}" "${SE_USER}" "${_of}" ||
-	    return 1
+	if test -n "${_pre}" ; then
+	    eval "${_pre}" || return 1
 	fi
 
 	# Print host name if verbose
@@ -272,15 +336,14 @@ exec_ssh ()
 	exec 4<&0 0< "${W_CLIST}" 5>&1 1>> "${_of}"
 
 	# Finally execute 'ssh'
-	eval "${SSH}" "${SE_SSHOPTS}" -T -l "${SE_USER}" "${_host}"
+	eval "${SSH}" "${SE_SSHOPTS}" -T -l "${_user}" "${_host}"
 
 	# Restore input and output
 	exec 0<&4 4<&- 1>&5 5>&-
 
 	# Execute post-exec command
-	if test -n "${SE_POSTEXEC}" ; then
-	    process_prepost "${SE_POSTEXEC}" "${_host}" "${SE_USER}" "${_of}" ||
-	    return 1
+	if test -n "${_post}" ; then
+	    eval "${_post}" || return 1
 	fi
     done < "${W_HLIST}"
 }
@@ -314,29 +377,36 @@ mk_hostlist ()
     local _e=""
     local _f=""
     local _elem=""
+    local _rc=0
 
     for _e in ${SE_HLIST} ; do
 	eval _elem=\"\${SE_HLIST_${_e}}\"
 	eval set -- "${_elem}"
 	for _f in "$@" ; do
 	    case "${_e}" in
-		( H* ) printf "%s\n" "${_f}" >> "${W_HLIST}" ;;
-		( L* ) process_hlist "${_f}" >> "${W_HLIST}" || return 1 ;;
+		( H* ) process_hline "${_f}" >> "${W_HLIST}" ; _rc=$? ;;
+		( L* ) process_hlist "${_f}" >> "${W_HLIST}" ; _rc=$? ;;
 	    esac
+	    test "${_rc}" -eq 1 && return 1
 	done
     done
+    test -s "${W_HLIST}" ||
+	{ err "resulting host list is empty" ; return 1 ; }
     if test -n "${F_SORT}" ; then
 	# Sort host list file in place
 	cmd sort -u -o "${W_HLIST}" "${W_HLIST}" || return 1
     fi
-    test -s "${W_HLIST}" ||
-	{ err "resulting host list is empty" ; return 1 ; }
 }
 
 # Print host list file
 print_hostlist ()
 {
-    cmd cat "${W_HLIST}" || return 1
+    local _host=""
+    local _x=""
+
+    while IFS="|" read -r _host _x ; do
+	printf "%s\n" "${_host}"
+    done < "${W_HLIST}"
 }
 
 ####
@@ -365,6 +435,19 @@ check_cmdlist ()
     test -n "${SE_FPATH}" &&
     SE_FPATH="$(check_paths "${SE_FPATH}${SE_CPATH:+:${SE_CPATH}}")" ||
     SE_FPATH="$(check_paths "${SE_CPATH}")"
+}
+
+# Check executable
+check_exec ()
+{
+    local _cmd="$1"
+
+    if test -f "${_cmd}" && test -x "${_cmd}" ; then
+	printf "%s" "$(absolute_path "${_cmd}")"
+    else
+	err "can't find executable '${_cmd}'"
+	return 1
+    fi
 }
 
 # Check host list
@@ -414,6 +497,40 @@ check_paths ()
 	done
 	IFS="${_ifs}"			# Restore IFS
 	printf "%s" "${_npath}"
+    fi
+}
+
+# Check pre/post commands
+check_prepost ()
+{
+    local _cmd=""
+    local _c=""
+
+    if test -n "${SE_PREEXEC}" ; then
+	F_FMTPRE="true"
+	eval set -- "${SE_PREEXEC}"
+	_c="$1" ; shift
+	case "${_c}" in
+	    ( *'%h'* | *'%u'* | *'%o'* ) F_FMTPRE="cmd" ; _cmd="${_c}" ;;
+	    ( * ) _cmd="$(check_exec "${_c}")" || return 1 ;;
+	esac
+	SE_PREEXEC="\"${_cmd}\""
+	for _c in "$@" ; do
+	    SE_PREEXEC="${SE_PREEXEC} \"${_c}\""
+	done
+    fi
+    if test -n "${SE_POSTEXEC}" ; then
+	F_FMTPOST="true"
+	eval set -- "${SE_POSTEXEC}"
+	_c="$1" ; shift
+	case "${_c}" in
+	    ( *'%h'* | *'%u'* | *'%o'* ) F_FMTPOST="cmd" ; _cmd="${_c}" ;;
+	    ( * ) _cmd="$(check_exec "${_c}")" || return 1 ;;
+	esac
+	SE_POSTEXEC="\"${_cmd}\""
+	for _c in "$@" ; do
+	    SE_POSTEXEC="${SE_POSTEXEC} \"${_c}\""
+	done
     fi
 }
 
@@ -499,7 +616,9 @@ init ()
 	PSTACK=""
 	SE_CLIST=""
 	SE_HLIST=""
-	F_PATTERN=""
+	F_FMTOUT=""
+	F_FMTPRE=""
+	F_FMTPOST=""
 	F_PRINT=""
 	F_SORT=""
 	F_VERBOSE=""
@@ -527,10 +646,10 @@ startup ()
     fi
 
     # Check user
-    if test -z "${SE_USER}" ; then
-	err "empty value for 'user'"
-	return 1
-    fi
+    case "${SE_USER}" in
+	( '' ) err "empty value for 'user'" ; return 1 ;;
+	( *[[:space:]]* ) err "'user' contains spaces" ; return 1 ;;
+    esac
 
     # Check command list if no '-q' option is set
     if test -z "${F_PRINT}" ; then
@@ -548,9 +667,12 @@ startup ()
     case "${SE_OUTFILE}" in
 	( "${DEF_SE_OUTFILE}" ) ;;
 	( '' ) SE_OUTFILE="${DEF_SE_OUTFILE}" ;;
-	( *'%h'* | *'%u'* ) F_PATTERN="true" ;;
+	( *'%h'* | *'%u'* ) F_FMTOUT="true" ;;
 	( * ) SE_OUTFILE="$(absolute_path "${SE_OUTFILE}")" ;;
     esac
+
+    # Check pre/post commands
+    check_prepost || return 1
 
     # Check working directory
     ( umask 0077 ; check_dir "${WORKDIR}" ) || return 1
