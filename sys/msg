@@ -15,3 +15,20 @@ err ()
 {
     printf "%s: error: %s\n" "${PROG}" "$*" >&2
 }
+
+########
+# Print warning message
+# Arguments:
+#   $@  message to print
+# Return:
+#   none
+# Input:
+#   none
+# Output:
+#   none
+########
+
+warn ()
+{
+    printf "%s: warning: %s\n" "${PROG}" "$*" >&2
+}
