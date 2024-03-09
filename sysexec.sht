@@ -1,5 +1,5 @@
 #%shebang
-#%version 9
+#%version 10
 #
 # Execute commands on remote host
 #
@@ -53,6 +53,8 @@ usage_help ()
     -L path	search path for 'listfile' (colon separated)
     -O sshopts	options to 'ssh' command
     -o outfile	output file or 'pattern' (%h is host, %u is user)
+    -p preexec	pre-exec command (%h is host, %u is user, %o is outfile)
+    -P postexec	post-exec command (%h is host, %u is user, %o is outfile)
     -q		print the resulting list of hosts (no commands execution)
     -s		sort list of hosts
     -v		print host name before execution
@@ -70,12 +72,13 @@ get_options ()
     local _hnum=0
 
     case "$1" in ( '-?' | '-help' | '--help' ) usage_help ;; esac
-    while getopts ":C:F:L:c:e:f:h:l:o:qsu:v" _opt ; do
+    while getopts ":C:F:L:O:P:c:e:f:h:l:o:p:qsu:v" _opt ; do
 	case "${_opt}" in
 	    ( 'C' ) OPT_SE_CPATH="${OPT_SE_CPATH:+${OPT_SE_CPATH}:}${OPTARG}" ;;
 	    ( 'F' ) OPT_SE_FPATH="${OPT_SE_FPATH:+${OPT_SE_FPATH}:}${OPTARG}" ;;
 	    ( 'L' ) OPT_SE_LPATH="${OPT_SE_LPATH:+${OPT_SE_LPATH}:}${OPTARG}" ;;
 	    ( 'O' ) OPT_SE_SSHOPTS="${OPT_SE_SSHOPTS:+"${OPT_SE_SSHOPTS} "}${OPTARG}" ;;
+	    ( 'P' ) OPT_SE_POSTEXEC="${OPTARG}" ;;
 	    ( 'c' ) OPT_CONF_FILE="$(absolute_path "${OPTARG}")" ;;
 	    ( 'e' )
 		test -n "${OPTARG}" || continue
@@ -102,6 +105,7 @@ get_options ()
 		SE_HLIST="${SE_HLIST:+"${SE_HLIST} "}L${_hnum}"
 		;;
 	    ( 'o' ) OPT_SE_OUTFILE="${OPTARG}" ;;
+	    ( 'p' ) OPT_SE_PREEXEC="${OPTARG}" ;;
 	    ( 'q' ) F_PRINT="true" ;;
 	    ( 's' ) F_SORT="true" ;;
 	    ( 'u' ) OPT_SE_USER="${OPTARG}" ;;
@@ -130,8 +134,8 @@ get_options ()
 
 ####
 
-# Process listfile
-process_file ()
+# Process host list file
+process_hlist ()
 {
     local _file="$1"
     local _cfile=""
@@ -167,7 +171,7 @@ process_file ()
 		esac
 		_if="$(absolute_path "${_if}" "${_dir}")"
 		test -f "${_if}" || continue	# Ignore absent file
-		process_file "${_if}" || return 1
+		process_hlist "${_if}" || return 1
 		;;
 	    ( * ) printf "%s\n" "${_line}" ;;	# Just print line
 	esac
@@ -177,6 +181,51 @@ process_file ()
     _del="${PSTACK##*"|"}"
     PSTACK="${PSTACK%"${_del}"*}"
     PSTACK="${PSTACK%"|"*}"	# Remove trailing bar
+}
+
+# Expand patterns in 'outfile'
+process_outfile ()
+{
+    local _host="$1"
+    local _user="$2"
+    local _out="$3"
+
+    while : ; do
+	case "${_out}" in
+	    ( *'%h'* ) _out="${_out%%\%h*}${_host}${_out#*\%h}" ;;
+	    ( *'%u'* ) _out="${_out%%\%u*}${_user}${_out#*\%u}" ;;
+	    ( * ) break ;;
+	esac
+    done
+    # 'absolute_path' will print path by itself
+    absolute_path "${_out}" || return 1
+}
+
+# Execute pre/post command
+process_prepost ()
+{
+    local _cmd="$1"
+    local _host="$2"
+    local _user="$3"
+    local _out="$4"
+    local _c=""
+
+    # Expand patterns
+    while : ; do
+	case "${_cmd}" in
+	    ( *'%h'* ) _cmd="${_cmd%%\%h*}\"${_host}\"${_cmd#*\%h}" ;;
+	    ( *'%u'* ) _cmd="${_cmd%%\%u*}\"${_user}\"${_cmd#*\%u}" ;;
+	    ( *'%o'* ) _cmd="${_cmd%%\%o*}\"${_out}\"${_cmd#*\%o}" ;;
+	    ( * ) break ;;
+	esac
+    done
+
+    # Check and execute command
+    eval set -- "${_cmd}"
+    _c="$(absolute_path "$1")" ; shift
+    test -f "${_c}" && test -x "${_c}" ||
+	{ err "can't find executable '${_c}'" ; return 1 ; }
+    "${_c}" "$@" || return 1
 }
 
 ####
@@ -201,23 +250,24 @@ exec_ssh ()
 
     # Execute commands on hosts
     while read -r _host ; do
-	# If 'outfile' is pattern then convert it and try to create output file
-	_of="${SE_OUTFILE}"
+	# Select output file
 	if test -n "${F_PATTERN}" ; then
-	    while : ; do
-		case "${_of}" in
-		    ( *'%h'* ) _of="${_of%%\%h*}${_host}${_of#*\%h}"   ;;
-		    ( *'%u'* ) _of="${_of%%\%u*}${SE_USER}${_of#*\%u}" ;;
-		    ( * ) break ;;
-		esac
-	    done
-	    _of="$(absolute_path "${_of}")"
+	    # If 'outfile' is pattern then convert it and try to create output file
+	    _of="$(process_outfile "${_host}" "${SE_USER}" "${SE_OUTFILE}")"
 	    # Try to create intermediate directories
 	    _dir="${_of%/*}"
 	    check_dir "${_dir:-/}" || return 1
 	    # Try to create output file
 	    ( : > "${_of}" ) 2>/dev/null ||
 		{ err "can't create file '${_of}'" ; return 1 ; }
+	else
+	    _of="${SE_OUTFILE}"
+	fi
+
+	# Execute pre-exec command
+	if test -n "${SE_PREEXEC}" ; then
+	    process_prepost "${SE_PREEXEC}" "${_host}" "${SE_USER}" "${_of}" ||
+	    return 1
 	fi
 
 	# Print host name if verbose
@@ -231,6 +281,12 @@ exec_ssh ()
 
 	# Restore input and output
 	exec 0<&4 4<&- 1>&5 5>&-
+
+	# Execute post-exec command
+	if test -n "${SE_POSTEXEC}" ; then
+	    process_prepost "${SE_POSTEXEC}" "${_host}" "${SE_USER}" "${_of}" ||
+	    return 1
+	fi
     done < "${W_HLIST}"
 }
 
@@ -268,7 +324,7 @@ mk_hostlist ()
 	for _f in "$@" ; do
 	    case "${_e}" in
 		( H* ) printf "%s\n" "${_f}" >> "${W_HLIST}" ;;
-		( L* ) process_file  "${_f}" >> "${W_HLIST}" || return 1 ;;
+		( L* ) process_hlist "${_f}" >> "${W_HLIST}" || return 1 ;;
 	    esac
 	done
     done
@@ -288,30 +344,6 @@ print_hostlist ()
 }
 
 ####
-
-# Check directories in SE_XPATH and return list of existing directories
-check_paths ()
-{
-    local _xpath="$1"
-    local _npath=""
-    local _dir=""
-    local _ifs=""
-
-    if test -n "${_xpath}" ; then
-	_ifs="${IFS}" ; IFS=":"		# Save IFS and set to ':'
-	for _dir in ${_xpath} ; do
-	    _dir="$(absolute_path "${_dir}")"
-	    # Check for duplicates
-	    case ":${_npath}:" in
-		( *":${_dir}:"* ) continue ;;
-	    esac
-	    # Check directory
-	    test -d "${_dir}" && _npath="${_npath:+${_npath}:}${_dir}"
-	done
-	IFS="${_ifs}"			# Restore IFS
-	printf "%s" "${_npath}"
-    fi
-}
 
 # Check command list
 check_cmdlist ()
@@ -363,6 +395,30 @@ check_hostlist ()
     test -n "${SE_LPATH}" &&
     SE_LPATH="$(check_paths "${SE_LPATH}${SE_CPATH:+:${SE_CPATH}}")" ||
     SE_LPATH="$(check_paths "${SE_CPATH}")"
+}
+
+# Check directories in SE_XPATH and return list of existing directories
+check_paths ()
+{
+    local _xpath="$1"
+    local _npath=""
+    local _dir=""
+    local _ifs=""
+
+    if test -n "${_xpath}" ; then
+	_ifs="${IFS}" ; IFS=":"		# Save IFS and set to ':'
+	for _dir in ${_xpath} ; do
+	    _dir="$(absolute_path "${_dir}")"
+	    # Check for duplicates
+	    case ":${_npath}:" in
+		( *":${_dir}:"* ) continue ;;
+	    esac
+	    # Check directory
+	    test -d "${_dir}" && _npath="${_npath:+${_npath}:}${_dir}"
+	done
+	IFS="${_ifs}"			# Restore IFS
+	printf "%s" "${_npath}"
+    fi
 }
 
 # Search and check files in cmd and host lists
@@ -434,7 +490,7 @@ init ()
     set -o noglob	# Do not expand pathnames
     # Initialize variables
     var_init SE_CMD SE_CMDFILE SE_HOST SE_LIST SE_SSHOPTS SE_USER \
-	     SE_OUTFILE SE_CPATH SE_FPATH SE_LPATH		&&
+	     SE_OUTFILE SE_CPATH SE_FPATH SE_LPATH SE_PREEXEC SE_POSTEXEC	&&
     {
 	# Set defaults
 	DEF_SE_OUTFILE="/dev/stdout"
@@ -462,7 +518,7 @@ init ()
     read_config "${CONF_FILE}"	&&
     # Set variables
     var_set  SE_CMD SE_CMDFILE SE_HOST SE_LIST SE_SSHOPTS SE_USER \
-	     SE_OUTFILE SE_CPATH SE_FPATH SE_LPATH
+	     SE_OUTFILE SE_CPATH SE_FPATH SE_LPATH SE_PREEXEC SE_POSTEXEC
 }
 
 # Startup subroutine
