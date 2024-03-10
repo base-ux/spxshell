@@ -1,5 +1,5 @@
 #%shebang
-#%version 13
+#%version 14
 #
 # Execute commands on remote host
 #
@@ -144,9 +144,11 @@ create_outfile ()
     local _of="$1"
     local _dir=""
 
-    # Try to create intermediate directories
-    _dir="${_of%/*}"
-    check_dir "${_dir:-/}" || return 1
+    if ! test -e "${_of}" ; then
+	# Try to create intermediate directories
+	_dir="${_of%/*}"
+	check_dir "${_dir:-/}" || return 1
+    fi
     # Try to create output file
     ( : > "${_of}" ) 2>/dev/null ||
 	{ err "can't create file '${_of}'" ; return 1 ; }
