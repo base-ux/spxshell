@@ -1,5 +1,5 @@
 #%shebang
-#%version 11
+#%version 12
 #
 # Execute commands on remote host
 #
@@ -47,6 +47,8 @@ usage_help ()
     Either combination of '-e' and '-f' flags or just 'command' should be set.
 
     Other options:
+    -A after	command to execute after processing
+    -B before	command to execute before processing
     -c config	configuration file
     -C path	common search path for 'listfile' and 'cmdfile' (colon separated)
     -F path	search path for 'cmdfile' (colon separated)
@@ -72,8 +74,10 @@ get_options ()
     local _hnum=0
 
     case "$1" in ( '-?' | '-help' | '--help' ) usage_help ;; esac
-    while getopts ":C:F:L:O:P:c:e:f:h:l:o:p:qsu:v" _opt ; do
+    while getopts ":A:B:C:F:L:O:P:c:e:f:h:l:o:p:qsu:v" _opt ; do
 	case "${_opt}" in
+	    ( 'A' ) OPT_SE_AFTER="${OPTARG}" ;;
+	    ( 'B' ) OPT_SE_BEFORE="${OPTARG}" ;;
 	    ( 'C' ) OPT_SE_CPATH="${OPT_SE_CPATH:+${OPT_SE_CPATH}:}${OPTARG}" ;;
 	    ( 'F' ) OPT_SE_FPATH="${OPT_SE_FPATH:+${OPT_SE_FPATH}:}${OPTARG}" ;;
 	    ( 'L' ) OPT_SE_LPATH="${OPT_SE_LPATH:+${OPT_SE_LPATH}:}${OPTARG}" ;;
@@ -307,6 +311,11 @@ exec_ssh ()
     local _post=""
     local _dir=""
 
+    # Execute 'before' command
+    if test -n "${SE_BEFORE}" ; then
+	eval "${SE_BEFORE}" || return 1
+    fi
+
     # Try to create output file if 'outfile' is not pattern
     if test -z "${F_FMTOUT}" ; then
 	( : > "${SE_OUTFILE}" ) 2>/dev/null ||
@@ -346,6 +355,11 @@ exec_ssh ()
 	    eval "${_post}" || return 1
 	fi
     done < "${W_HLIST}"
+
+    # Execute 'after' command
+    if test -n "${SE_AFTER}" ; then
+	eval "${SE_AFTER}" || return 1
+    fi
 }
 
 # Fill command list file
@@ -603,7 +617,8 @@ init ()
     set -o noglob	# Do not expand pathnames
     # Initialize variables
     var_init SE_CMD SE_CMDFILE SE_HOST SE_LIST SE_SSHOPTS SE_USER \
-	     SE_OUTFILE SE_CPATH SE_FPATH SE_LPATH SE_PREEXEC SE_POSTEXEC	&&
+	     SE_OUTFILE SE_CPATH SE_FPATH SE_LPATH \
+	     SE_BEFORE SE_AFTER SE_PREEXEC SE_POSTEXEC	&&
     {
 	# Set defaults
 	DEF_SE_OUTFILE="/dev/stdout"
@@ -633,7 +648,8 @@ init ()
     read_config "${CONF_FILE}"	&&
     # Set variables
     var_set  SE_CMD SE_CMDFILE SE_HOST SE_LIST SE_SSHOPTS SE_USER \
-	     SE_OUTFILE SE_CPATH SE_FPATH SE_LPATH SE_PREEXEC SE_POSTEXEC
+	     SE_OUTFILE SE_CPATH SE_FPATH SE_LPATH \
+	     SE_BEFORE SE_AFTER SE_PREEXEC SE_POSTEXEC
 }
 
 # Startup subroutine
