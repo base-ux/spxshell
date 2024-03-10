@@ -1,5 +1,5 @@
 #%shebang
-#%version 14
+#%version 15
 #
 # Execute commands on remote host
 #
@@ -50,6 +50,7 @@ usage_help ()
     -A after	command to execute after processing
     -B before	command to execute before processing
     -c config	configuration file
+    -d outdir	output directory for output files
     -C path	common search path for 'listfile' and 'cmdfile' (colon separated)
     -F path	search path for 'cmdfile' (colon separated)
     -L path	search path for 'listfile' (colon separated)
@@ -74,7 +75,7 @@ get_options ()
     local _hnum=0
 
     case "$1" in ( '-?' | '-help' | '--help' ) usage_help ;; esac
-    while getopts ":A:B:C:F:L:O:P:c:e:f:h:l:o:p:qsu:v" _opt ; do
+    while getopts ":A:B:C:F:L:O:P:c:d:e:f:h:l:o:p:qsu:v" _opt ; do
 	case "${_opt}" in
 	    ( 'A' ) OPT_SE_AFTER="${OPTARG}" ;;
 	    ( 'B' ) OPT_SE_BEFORE="${OPTARG}" ;;
@@ -84,6 +85,7 @@ get_options ()
 	    ( 'O' ) OPT_SE_SSHOPTS="${OPT_SE_SSHOPTS:+"${OPT_SE_SSHOPTS} "}${OPTARG}" ;;
 	    ( 'P' ) OPT_SE_POSTEXEC="${OPTARG}" ;;
 	    ( 'c' ) OPT_CONF_FILE="$(absolute_path "${OPTARG}")" ;;
+	    ( 'd' ) OPT_SE_OUTDIR="${OPTARG}" ;;
 	    ( 'e' )
 		test -n "${OPTARG}" || continue
 		_cnum="$(( ${_cnum} + 1 ))"
@@ -275,7 +277,7 @@ process_outfile ()
 	esac
     done
     # 'absolute_path' will print path by itself
-    absolute_path "${_out}" || return 1
+    absolute_path "${_out}" "${SE_OUTDIR}" || return 1
 }
 
 # Execute pre/post command
@@ -626,10 +628,11 @@ init ()
     set -o noglob	# Do not expand pathnames
     # Initialize variables
     var_init SE_CMD SE_CMDFILE SE_HOST SE_LIST SE_SSHOPTS SE_USER \
-	     SE_OUTFILE SE_CPATH SE_FPATH SE_LPATH \
+	     SE_OUTDIR SE_OUTFILE SE_CPATH SE_FPATH SE_LPATH \
 	     SE_BEFORE SE_AFTER SE_PREEXEC SE_POSTEXEC	&&
     {
 	# Set defaults
+	DEF_SE_OUTDIR="$(pwd)"
 	DEF_SE_OUTFILE="/dev/stdout"
 	DEF_SE_USER="$(cmd id -un)"
 	# Define 'internal' variables
@@ -657,7 +660,7 @@ init ()
     read_config "${CONF_FILE}"	&&
     # Set variables
     var_set  SE_CMD SE_CMDFILE SE_HOST SE_LIST SE_SSHOPTS SE_USER \
-	     SE_OUTFILE SE_CPATH SE_FPATH SE_LPATH \
+	     SE_OUTDIR SE_OUTFILE SE_CPATH SE_FPATH SE_LPATH \
 	     SE_BEFORE SE_AFTER SE_PREEXEC SE_POSTEXEC
 }
 
@@ -688,12 +691,19 @@ startup ()
     #   convert to absolute paths and quote filenames with spaces
     search_files || return 1
 
+    # Check 'outdir' option
+    case "${SE_OUTDIR}" in
+	( "${DEF_SE_OUTDIR}" ) ;;
+	( '' ) SE_OUTDIR="${DEF_SE_OUTDIR}" ;;
+	( *  ) SE_OUTDIR="$(absolute_path "${SE_OUTDIR}")" ;;
+    esac
+
     # Check 'outfile' option
     case "${SE_OUTFILE}" in
 	( "${DEF_SE_OUTFILE}" ) ;;
 	( '' ) SE_OUTFILE="${DEF_SE_OUTFILE}" ;;
 	( *'%h'* | *'%u'* ) F_FMTOUT="true" ;;
-	( * ) SE_OUTFILE="$(absolute_path "${SE_OUTFILE}")" ;;
+	( *  ) SE_OUTFILE="$(absolute_path "${SE_OUTFILE}" "${SE_OUTDIR}")" ;;
     esac
 
     # Check pre/post commands
