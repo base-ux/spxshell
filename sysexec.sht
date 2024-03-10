@@ -1,5 +1,5 @@
 #%shebang
-#%version 12
+#%version 13
 #
 # Execute commands on remote host
 #
@@ -137,6 +137,20 @@ get_options ()
 }
 
 ####
+
+# Create 'outfile'
+create_outfile ()
+{
+    local _of="$1"
+    local _dir=""
+
+    # Try to create intermediate directories
+    _dir="${_of%/*}"
+    check_dir "${_dir:-/}" || return 1
+    # Try to create output file
+    ( : > "${_of}" ) 2>/dev/null ||
+	{ err "can't create file '${_of}'" ; return 1 ; }
+}
 
 # Process line for host
 # return 1 for errors, 2 for warnings
@@ -309,7 +323,6 @@ exec_ssh ()
     local _of=""
     local _pre=""
     local _post=""
-    local _dir=""
 
     # Execute 'before' command
     if test -n "${SE_BEFORE}" ; then
@@ -318,19 +331,13 @@ exec_ssh ()
 
     # Try to create output file if 'outfile' is not pattern
     if test -z "${F_FMTOUT}" ; then
-	( : > "${SE_OUTFILE}" ) 2>/dev/null ||
-	    { err "can't create file '${SE_OUTFILE}'" ; return 1 ; }
+	create_outfile "${SE_OUTFILE}" || return 1
     fi
 
     # Execute commands on hosts
     while IFS="|" read -r _host _user _of _pre _post ; do
 	if test -n "${F_FMTOUT}" ; then
-	    # Try to create intermediate directories
-	    _dir="${_of%/*}"
-	    check_dir "${_dir:-/}" || return 1
-	    # Try to create output file
-	    ( : > "${_of}" ) 2>/dev/null ||
-		{ err "can't create file '${_of}'" ; return 1 ; }
+	    create_outfile "${_of}" || return 1
 	fi
 
 	# Execute pre-exec command
