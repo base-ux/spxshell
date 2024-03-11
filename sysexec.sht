@@ -1,5 +1,5 @@
 #%shebang
-#%version 15
+#%version 16
 #
 # Execute commands on remote host
 #
@@ -334,7 +334,7 @@ exec_ssh ()
     fi
 
     # Try to create output file if 'outfile' is not pattern
-    if test -z "${F_FMTOUT}" ; then
+    if test -n "${SE_OUTFILE}" && test -z "${F_FMTOUT}" ; then
 	create_outfile "${SE_OUTFILE}" || return 1
     fi
 
@@ -353,13 +353,15 @@ exec_ssh ()
 	test -n "${F_VERBOSE}" && printf "%s\n" "${_host}"
 
 	# Redirect input and output
-	exec 4<&0 0< "${W_CLIST}" 5>&1 1>> "${_of}"
+	exec 4<&0 0< "${W_CLIST}"
+	test -n "${_of}" && exec 5>&1 1>> "${_of}"
 
 	# Finally execute 'ssh'
 	eval "${SSH}" "${SE_SSHOPTS}" -T -l "${_user}" "${_host}"
 
 	# Restore input and output
-	exec 0<&4 4<&- 1>&5 5>&-
+	exec 0<&4 4<&-
+	test -n "${_of}" && exec 1>&5 5>&-
 
 	# Execute post-exec command
 	if test -n "${_post}" ; then
@@ -633,7 +635,6 @@ init ()
     {
 	# Set defaults
 	DEF_SE_OUTDIR="$(pwd)"
-	DEF_SE_OUTFILE="/dev/stdout"
 	DEF_SE_USER="$(cmd id -un)"
 	# Define 'internal' variables
 	SSH="$(command -v ssh)"
@@ -693,15 +694,14 @@ startup ()
 
     # Check 'outdir' option
     case "${SE_OUTDIR}" in
-	( "${DEF_SE_OUTDIR}" ) ;;
-	( '' ) SE_OUTDIR="${DEF_SE_OUTDIR}" ;;
+	( '' ) err "empty value for 'outdir'" ; return 1 ;;
 	( *  ) SE_OUTDIR="$(absolute_path "${SE_OUTDIR}")" ;;
     esac
 
     # Check 'outfile' option
     case "${SE_OUTFILE}" in
-	( "${DEF_SE_OUTFILE}" ) ;;
-	( '' ) SE_OUTFILE="${DEF_SE_OUTFILE}" ;;
+	( ''  ) ;;
+	( '-' ) SE_OUTFILE="" ;;
 	( *'%h'* | *'%u'* ) F_FMTOUT="true" ;;
 	( *  ) SE_OUTFILE="$(absolute_path "${SE_OUTFILE}" "${SE_OUTDIR}")" ;;
     esac
