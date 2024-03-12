@@ -1,0 +1,346 @@
+#%shebang
+#%version 1
+#
+# Backup configuration files and report differences
+#
+
+#%prolog
+
+################
+
+#%include sys/checkdir
+#%include sys/checkfile
+#%include sys/cmd
+#%include sys/config
+#%include sys/msg
+#%include sys/pathabs
+#%include sys/pathcanon
+#%include sys/vars
+
+################
+
+# Print usage information
+usage ()
+{
+    cat << EOF
+Usage: ${PROG} [-c config] [-d bckpdir] [-f file]... [-l listfile]...
+EOF
+}
+
+# Print help information
+usage_help ()
+{
+    usage
+    cat << EOF
+
+    Backup configuration files and report differences
+
+    Options:
+    -c config	configuration file
+    -d bckpdir	directory where to backup files
+    -f file	file to be backuped
+    -l listfile	file with the list of files to be backuped
+EOF
+    exit 0
+}
+
+####
+
+# Parse command line options
+get_options ()
+{
+    local _opt=""
+
+    case "$1" in ( '-?' | '-help' | '--help' ) usage_help ;; esac
+    while getopts ":c:d:f:l:" _opt ; do
+	case "${_opt}" in
+	    ( 'c' ) OPT_CONF_FILE="$(absolute_path "${OPTARG}")" ;;
+	    ( 'd' ) OPT_CB_DIR="${OPTARG}" ;;
+	    ( 'f' ) OPT_CB_FILE="${OPT_CB_FILE:+"${OPT_CB_FILE} "}${OPTARG}" ;;
+	    ( 'l' ) OPT_CB_LIST="${OPT_CB_LIST:+"${OPT_CB_LIST} "}${OPTARG}" ;;
+	    ( ':' )
+		err "missing argument for option -- '${OPTARG}'"
+		usage ; return 1 ;;
+	    ( '?' )
+		err "unknown option -- '${OPTARG}'"
+		usage ; return 1 ;;
+	    (  *  )
+		err "no handler for option '${_opt}'"
+		return 1 ;;
+	esac
+    done
+    shift $((${OPTIND} - 1))
+    if test $# -ne 0 ; then
+	err "too many arguments" ; usage ; return 1
+    fi
+}
+
+####
+
+# Process list entry
+process_entry ()
+{
+    local _e="$1"
+
+    case "${_e}" in
+	( /* ) ;;
+	( * ) warn "not absolute path: '${_e}'" ; return 0 ;;
+    esac
+    if test -d "${_e}" ; then
+	cmd find -H "${_e}" -type f -print
+    else
+	printf "%s\n" "${_e}"
+    fi
+}
+
+# Process list file
+process_listfile ()
+{
+    local _file="$1"
+    local _cfile=""
+    local _line=""
+    local _if=""
+    local _dir=""
+    local _del=""
+
+    # Add canonical file name to stack
+    _cfile="$(canonical_path "${_file}")"
+    case "|${PSTACK}|" in
+	( *"|${_cfile}|"* ) warn "cyclic include of file '${_file}'" ; return 0 ;;
+	( * ) PSTACK="${PSTACK:+${PSTACK}|}${_cfile}" ;;
+    esac
+
+    # Read file
+    while read -r _line ; do
+	case "${_line}" in
+	    ( '' | '#'* ) continue ;;	# Skip comments and empty lines
+	    ( '%'* )	# Include file
+		_if="${_line#\%}"	# Remove '%'
+		case "${_if}" in
+		    ( '' ) continue ;;	# Skip empty include
+		    ( [[:space:]]* )	# Remove leading spaces
+			_del="${_if%%[![:space:]]*}"	# Get spaces at the beginning...
+			_if="${_if#"${_del}"}"		# ...and cut them
+			;;
+		esac
+		_dir="${_file%/*}"
+		case "${_dir}" in
+		    ( '' ) _dir="/" ;;
+		    ( "${_file}" ) _dir="$(pwd)" ;;
+		esac
+		_if="$(absolute_path "${_if}" "${_dir}")"
+		test -f "${_if}" ||
+		{
+		    warn "can't include file '${_if}'"
+		    continue	# Ignore absent file
+		}
+		( process_listfile "${_if}" )
+		;;
+	    ( * ) process_entry "${_line}" ;;
+	esac
+    done < "${_file}"
+
+    # Remove from file names stack
+    _del="${PSTACK##*"|"}"
+    PSTACK="${PSTACK%"${_del}"*}"
+    PSTACK="${PSTACK%"|"*}"	# Remove trailing bar
+}
+
+####
+
+# Backup files from the list
+backup_list ()
+{
+    local _f=""
+    local _bf=""
+    local _obf=""
+    local _dir=""
+
+    while read -r _f ; do
+	# Process only if file exists
+	if test -f "${_f}" ; then
+	    # _bf is backup file path
+	    # _obf is backup file path with date extension ('old' backup file)
+	    _bf="${CB_DIR}/${_f#/}"
+	    _obf="${_bf}.${DATE}"
+	    if test -f "${_bf}" ; then
+		# Compare backup file with original
+		cmd diff -u "${_bf}" "${_f}" >> "${W_OUT}"
+		if test $? -eq 1 ; then
+		    # Defferences found: move backup file to 'old'...
+		    cmd mv -f "${_bf}" "${_obf}" ||
+			{ warn "can't move file '${_bf}'" ; continue ; }
+		    # ...and copy original
+		    cmd cp -p "${_f}" "${_bf}" ||
+			{ warn "can't copy file '${_f}'"  ; continue ; }
+		fi
+	    else
+		# Create intermediate directories if needed...
+		_dir="${_bf%/*}"
+		test -d "${_dir}" || cmd mkdir -p "${_dir}" ||
+		    { warn "can't create directory '${_dir}'" ; continue ; }
+		# ...and copy original
+		cmd cp -p "${_f}" "${_bf}" ||
+		    { warn "can't copy file '${_f}'"  ; continue ; }
+	    fi
+	fi
+    done < "${W_FLIST}"
+}
+
+# Create file list
+mk_filelist ()
+{
+    local _f=""
+
+    # First process entries for files
+    eval set -- "${CB_FILE}"
+    for _f in "$@" ; do
+	process_entry "${_f}" >> "${W_FLIST}"
+    done
+    # Second process file lists
+    eval set -- "${CB_LIST}"
+    for _f in "$@" ; do
+	test -f "${_f}" ||
+	    { warn "file '${_f}' not found" ; continue ; }
+	process_listfile "${_f}" >> "${W_FLIST}"
+    done
+    test -s "${W_FLIST}" ||
+	{ err "resulting file list is empty" ; return 1 ; }
+    # Sort file list in place
+    cmd sort -u -o "${W_FLIST}" "${W_FLIST}" || return 1
+}
+
+# Process output file
+process_output ()
+{
+    local _d=""
+    local _f=""
+
+    if test -s "${W_OUT}" ; then
+	# Save not empty output file for history
+	_d="${CB_DIR}/diffs/${DATE%??}"
+	_f="${_d}/diff.${DATE}"
+	{ test -d "${_d}" || cmd mkdir -p "${_d}" ; } &&
+	cp -f "${W_OUT}" "${_f}"
+    fi
+}
+
+####
+
+# Convert file names to absolute path and quote file names with spaces
+convert_files ()
+{
+    local _v=""
+    local _f=""
+    local _flist=""
+    local _args=""
+
+    for _v in CB_FILE CB_LIST ; do
+	_flist=""
+	eval _args=\"\${${_v}}\"
+	eval set -- "${_args}"
+	for _f in "$@" ; do
+	    _f="$(absolute_path "${_f}")"
+	    # Quote file name with spaces
+	    case "${_f}" in ( *[[:space:]]* ) _f="\"${_f}\"" ;; esac
+	    # Add file name to list
+	    _flist="${_flist:+"${_flist} "}${_f}"
+	done
+	eval ${_v}=\"\${_flist}\"
+    done
+}
+
+####
+
+# Initialization subroutine
+init ()
+{
+    set -o noglob	# Do not expand pathnames
+    umask 0077		# Set 'umask' to user-only access
+    # Initialize variables
+    var_init CB_DIR CB_FILE CB_LIST	&&
+    {
+	# Define 'internal' variables
+	WORKDIR="${TMPDIR:-/tmp}/${PROG}.$$"
+	W_FLIST="${WORKDIR}/filelist"
+	W_OUT="${WORKDIR}/outfile"
+	DATE="$(date "+%Y%m%d")"
+	PSTACK=""
+    } &&
+    # Set up configuration file variables
+    var_init CONF_FILE		&&
+    DEF_CONF_FILE="spxshell/cfbackup.conf"	&&
+    # Get options
+    get_options "$@"		&&
+    # Read configuration file
+    var_set  CONF_FILE		&&
+    read_config "${CONF_FILE}"	&&
+    # Set variables
+    var_set  CB_DIR CB_FILE CB_LIST
+}
+
+# Startup subroutine
+startup ()
+{
+    # Check backup directory
+    case "${CB_DIR}" in
+	( '' ) err "empty value for 'bckpdir'" ; return 1 ;;
+	( /  ) err "'bckpdir' can't be '/'" ; return 1 ;;
+	( *  )
+	    CB_DIR="$(absolute_path "${CB_DIR}")"
+	    check_dir "${CB_DIR}" || return 1 ;;
+    esac
+    # Check file and/or list
+    if test -n "${CB_FILE}" || test -n "${CB_LIST}" ; then
+	convert_files || return 1
+    else
+	err "neither 'file' nor 'listfile' is set"
+	return 1
+    fi
+
+    # Check working directory
+    ( umask 0077 ; check_dir "${WORKDIR}" ) || return 1
+    # Try to create working files
+    ( : > "${W_FLIST}" && : > "${W_OUT}" ) 2>/dev/null ||
+	{ err "can't create temporary files" ; return 1 ; }
+}
+
+# Clean up the staff
+cleanup ()
+{
+    if test -d "${WORKDIR}" ; then
+	cmd rm -f "${W_FLIST}" "${W_OUT}"
+	cmd rmdir "${WORKDIR}"
+    fi
+}
+
+# Clean up the staff and exit with error
+clean_fail ()
+{
+    cleanup
+    fail "${1:-1}"
+}
+
+# Exit with error code
+fail ()
+{
+    exit "${1:-1}"
+}
+
+####
+
+# Main subroutine
+main ()
+{
+    init "$@" && startup || fail
+    trap 'clean_fail 130' HUP INT TERM
+    {
+	mk_filelist	&&
+	backup_list	&&
+	process_output
+    } || clean_fail
+    cleanup
+}
+
+# Call main subroutine
+main "$@"
