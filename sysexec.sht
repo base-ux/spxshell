@@ -1,5 +1,5 @@
 #%shebang
-#%version 16
+#%version 17
 #
 # Execute commands on remote host
 #
@@ -9,7 +9,6 @@
 ################
 
 #%include sys/checkdir
-#%include sys/checkfile
 #%include sys/cmd
 #%include sys/config
 #%include sys/msg
