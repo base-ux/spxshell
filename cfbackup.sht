@@ -1,5 +1,5 @@
 #%shebang
-#%version 1
+#%version 2
 #
 # Backup configuration files and report differences
 #
@@ -12,6 +12,7 @@
 #%include sys/checkfile
 #%include sys/cmd
 #%include sys/config
+#%include sys/findcmd
 #%include sys/msg
 #%include sys/pathabs
 #%include sys/pathcanon
@@ -23,7 +24,7 @@
 usage ()
 {
     cat << EOF
-Usage: ${PROG} [-c config] [-d bckpdir] [-f file]... [-l listfile]...
+Usage: ${PROG} [-c config] [-d bckpdir] [-f file]... [-l listfile]... [-m mailto]
 EOF
 }
 
@@ -40,6 +41,7 @@ usage_help ()
     -d bckpdir	directory where to backup files
     -f file	file to be backuped
     -l listfile	file with the list of files to be backuped
+    -m mailto	send differences report to 'mailto' recipient
 EOF
     exit 0
 }
@@ -52,12 +54,13 @@ get_options ()
     local _opt=""
 
     case "$1" in ( '-?' | '-help' | '--help' ) usage_help ;; esac
-    while getopts ":c:d:f:l:" _opt ; do
+    while getopts ":c:d:f:l:m:" _opt ; do
 	case "${_opt}" in
 	    ( 'c' ) OPT_CONF_FILE="$(absolute_path "${OPTARG}")" ;;
 	    ( 'd' ) OPT_CB_DIR="${OPTARG}" ;;
 	    ( 'f' ) OPT_CB_FILE="${OPT_CB_FILE:+"${OPT_CB_FILE} "}${OPTARG}" ;;
 	    ( 'l' ) OPT_CB_LIST="${OPT_CB_LIST:+"${OPT_CB_LIST} "}${OPTARG}" ;;
+	    ( 'm' ) OPT_CB_MAILTO="${OPTARG}" ;;
 	    ( ':' )
 		err "missing argument for option -- '${OPTARG}'"
 		usage ; return 1 ;;
@@ -220,12 +223,33 @@ process_output ()
 	# Save not empty output file for history
 	_d="${CB_DIR}/diffs/${DATE%??}"
 	_f="${_d}/diff.${DATE}"
-	{ test -d "${_d}" || cmd mkdir -p "${_d}" ; } &&
-	cp -f "${W_OUT}" "${_f}"
+	{
+	    test -d "${_d}" || cmd mkdir -p "${_d}"
+        } &&
+	cmd cp -f "${W_OUT}" "${_f}"	&&
+	{
+	    if test -n "${CB_MAILTO}" ; then
+		cmd ${MAIL} -s "${MAILSUBJ}" "${CB_MAILTO}" < "${_f}"
+	    fi
+	}
     fi
 }
 
 ####
+
+# Check and set mail settings
+check_mail ()
+{
+    local _host=""
+
+    _host="$(cmd hostname)"
+    test -n "${_host}" || _host="$(cmd uname -n)"
+
+    MAILSUBJ="${_host}: configuration differences on $(date "+%Y-%m-%d")"
+
+    MAIL="$(find_command mailx mail)"
+    test -n "${MAIL}" || CB_MAILTO=""
+}
 
 # Convert file names to absolute path and quote file names with spaces
 convert_files ()
@@ -258,13 +282,15 @@ init ()
     set -o noglob	# Do not expand pathnames
     umask 0077		# Set 'umask' to user-only access
     # Initialize variables
-    var_init CB_DIR CB_FILE CB_LIST	&&
+    var_init CB_DIR CB_FILE CB_LIST CB_MAILTO	&&
     {
 	# Define 'internal' variables
 	WORKDIR="${TMPDIR:-/tmp}/${PROG}.$$"
 	W_FLIST="${WORKDIR}/filelist"
 	W_OUT="${WORKDIR}/outfile"
 	DATE="$(date "+%Y%m%d")"
+	MAIL=""
+	MAILSUBJ=""
 	PSTACK=""
     } &&
     # Set up configuration file variables
@@ -276,7 +302,7 @@ init ()
     var_set  CONF_FILE		&&
     read_config "${CONF_FILE}"	&&
     # Set variables
-    var_set  CB_DIR CB_FILE CB_LIST
+    var_set  CB_DIR CB_FILE CB_LIST CB_MAILTO
 }
 
 # Startup subroutine
@@ -297,6 +323,9 @@ startup ()
 	err "neither 'file' nor 'listfile' is set"
 	return 1
     fi
+
+    # Check and set mail settings
+    test -n "${CB_MAILTO}" && check_mail
 
     # Check working directory
     ( umask 0077 ; check_dir "${WORKDIR}" ) || return 1
