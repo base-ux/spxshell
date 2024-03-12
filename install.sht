@@ -1,5 +1,5 @@
 #%shebang
-#%version 8
+#%version 9
 #
 # Installation script
 #
@@ -19,6 +19,7 @@
 SRCDIR="$(cd -- "$(dirname -- "$0")" ; pwd)"
 
 SRCFILES="
+cfbackup.sh
 delcore.sh
 mkdeploy.sh
 mkhlist.sh

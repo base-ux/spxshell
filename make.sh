@@ -2,7 +2,7 @@
 
 # Set variables
 PRODUCT="spxshell"
-VERSION="0.13.16"
+VERSION="0.14.0"
 
 PROG="$(basename -- "$0")"
 
@@ -34,6 +34,7 @@ spxgen.sht
 "
 
 SRCS="
+cfbackup.sht
 delcore.sht
 mkdeploy.sht
 mkhlist.sht
