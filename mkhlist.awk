@@ -13,57 +13,63 @@ function write_lst (item, file) {
     print item >> file
 }
 
-# Skip comments and empty lines
-$0 ~ /^(#|[[:space:]]*$)/ { next }
+# Skip comments, empty lines, groups and items
+$1 ~ /^[[:space:]]*(#|(%[[:space:]]*)?$)/ { next }
+# Remove inline comments
+$0 ~ /#/ { sub(/[[:space:]]*#.*$/, "", $0) }
 
 # Otherwise process the line
 {
     item = $1
     list = $2
 
-    # Remove leading and trailing spaces
-    sub(/^[[:space:]]+/, "", item)
-    sub(/[[:space:]]+$/, "", item)
+    # Process list
     if ( list ~ /^[[:space:]]*$/ ) {
 	# If list is empty
 	n = 0
     } else {
 	# Split list to the items
 	n = split(list, alist, ",")
-	# Remove leading and trailing spaces
 	for ( i = 1; i <= n; i++ ) {
+	    # Remove leading and trailing spaces
 	    sub(/^[[:space:]]+/, "", alist[i])
 	    sub(/[[:space:]]+$/, "", alist[i])
 	}
     }
+
+    # Process item
+    # Remove leading and trailing spaces for item
+    sub(/^[[:space:]]+/, "", item)
+    sub(/[[:space:]]+$/, "", item)
     if ( item ~ /^%/ ) {
 	# If item is group (begin with %)
 	# Remove leading % and any spaces after it
 	sub(/^%[[:space:]]*/, "", item)
-	# Construct lst-file name
-	f_lst = OUT_DIR "/" item ".lst"
+	# Construct listfile name
+	f_lst = OUT_DIR "/" item
 	for ( i = 1; i <= n; i++ ) {
 	    s = alist[i]
-	    # If list item is group then add .lst-suffix
-	    if ( s ~ /^%/ ) s = s ".lst"
+	    # Ignore empty records
+	    if ( s ~ /^%?$/ ) continue
 	    write_lst(s, f_lst)
 	}
     } else {
 	# If item is ordinary host
-	if ( n == 0 ) {
-	    # Construct lst-file name
-	    # For empty lists write to nogroup.lst file
-	    f_lst = OUT_DIR "/nogroup.lst"
+	w = 0
+	for ( i = 1; i <= n; i++ ) {
+	    s = alist[i]
+	    # Ignore groups, empty records
+	    # and records which begin or end with '/'
+	    if ( s ~ /^(%|\/|$)|\/$/ ) continue
+	    # Construct listfile name
+	    f_lst = OUT_DIR "/" s
 	    write_lst(item, f_lst)
-	} else {
-	    for ( i = 1; i <= n; i++ ) {
-		s = alist[i]
-		# Ignore groups in the list for ordinary items
-		if ( s ~ /^%/ ) continue
-		# Construct lst-file name
-		f_lst = OUT_DIR "/" s ".lst"
-		write_lst(item, f_lst)
-	    }
+	    w++
+	}
+	if ( w == 0 ) {
+	    # For empty lists write to 'nogroup' file
+	    f_lst = OUT_DIR "/nogroup"
+	    write_lst(item, f_lst)
 	}
     }
 }
