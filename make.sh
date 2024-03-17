@@ -2,7 +2,7 @@
 
 # Set variables
 PRODUCT="spxshell"
-VERSION="0.14.2"
+VERSION="0.14.3"
 
 PROG="$(basename -- "$0")"
 
@@ -26,6 +26,7 @@ sys/prolog
 sys/checkfile
 sys/chkvname
 sys/cmd
+sys/config
 sys/msg
 sys/pathabs
 sys/pathcanon

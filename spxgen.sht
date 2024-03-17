@@ -1,11 +1,12 @@
 #%shebang
 
-SPXGEN_VERSION="25"
+SPXGEN_VERSION="26"
 
 #%prolog
 
 #%include sys/checkfile
 #%include sys/cmd
+#%include sys/config
 #%include sys/msg
 #%include sys/pathabs
 #%include sys/pathcanon
@@ -91,11 +92,6 @@ get_options ()
 	return 1
     elif test $# -eq 1 ; then
 	OPT_SRCFILE="$1"
-    elif test -z "${SRCFILE}" ; then
-	# SRCFILE may be set via environment
-	err "mandatory argument missing"
-	usage
-	return 1
     fi
 }
 
@@ -451,9 +447,10 @@ init ()
     var_init OUTFILE PROLOG ROOTDIR SHEBANG SRCFILE &&
     {
 	# Set defaults
-	DEF_OUTFILE="/dev/stdout"
 	DEF_PROLOG="sys/prolog"
 	DEF_SHEBANG="#!/bin/sh"
+    } &&
+    {
 	# Define 'internal' variables
 	# PSTACK is used as filenames stack for 'process_file' function
 	# PLIST is used as filenames list of the processed files for '#%include' directive
@@ -468,8 +465,14 @@ init ()
 	# Set system embedded functions map
 	SPXMAP="${IDFN_MAP}"
     } &&
+    # Set up configuration file variables
+    var_init CONF_FILE		&&
+    DEF_CONF_FILE="spxshell/spxgen.conf"	&&
     # Get options
-    get_options "$@"	&&
+    get_options "$@"		&&
+    # Read configuration file
+    var_set  CONF_FILE		&&
+    read_config "${CONF_FILE}"	&&
     # Set variables
     var_set  OUTFILE PROLOG ROOTDIR SHEBANG SRCFILE
 }
@@ -477,14 +480,39 @@ init ()
 # Startup subroutine
 startup ()
 {
+    # Check source file
+    case "${SRCFILE}" in
+	( '' ) err "empty value for 'inputfile'" ; return 1 ;;
+	( *  ) SRCFILE="$(absolute_path "${SRCFILE}")" ;;
+    esac
+
+    # Check PROLOG and SHEBANG variables
+    test -n "${PROLOG}" ||
+	{ err "empty value for 'prolog'"  ; return 1 ; }
+    test -n "${SHEBANG}" ||
+	{ err "empty value for 'shebang'" ; return 1 ; }
+
+    # Check root path
     ROOTDIR="${ROOTDIR:+$(absolute_path "${ROOTDIR}")}"
-    SRCFILE="$(absolute_path "${SRCFILE}")"	&&
-    : "${ROOTDIR:=${SRCFILE%/*}}"		&&
-    test -n "${PROLOG}"				&&
-    test -n "${SHEBANG}"			&&
-    OUTFILE="$(absolute_path "${OUTFILE}")"	&&
-    ( : > "${OUTFILE}" ) 2>/dev/null		&&
-    exec 3> "${OUTFILE}"
+    : "${ROOTDIR:=${SRCFILE%/*}}"
+    : "${ROOTDIR:=$(pwd)}"	# In case SRCFILE is in '/' directory
+
+    # Check output file
+    case "${OUTFILE}" in
+	( ''  ) ;;
+	( '-' ) OUTFILE="" ;;
+	(  *  ) OUTFILE="$(absolute_path "${OUTFILE}")" ;;
+    esac
+
+    if test -n "${OUTFILE}" ; then
+	# If output file is set then try to create it
+	( : > "${OUTFILE}" ) 2>/dev/null ||
+	    { err "can't create output file '${OUTFILE}'" ; return 1 ; }
+	exec 3> "${OUTFILE}"
+    else
+	# Otherwise copy stdout to file descriptor '3'
+	exec 3>&1
+    fi
 }
 
 # Close output descriptor
@@ -497,7 +525,7 @@ cleanup ()
 clean_fail ()
 {
     cleanup
-    cmd rm -f "${OUTFILE}"
+    test -n "${OUTFILE}" && cmd rm -f "${OUTFILE}"
     fail "${1:-1}"
 }
 
