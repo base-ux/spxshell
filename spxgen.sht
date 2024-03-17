@@ -1,6 +1,6 @@
 #%shebang
 
-SPXGEN_VERSION="26"
+SPXGEN_VERSION="27"
 
 #%prolog
 
@@ -35,7 +35,7 @@ SPXGEN_VERSION="26"
 usage ()
 {
     cat << EOF
-Usage: ${PROG} [-o outfile] [-P prolog] [-R basedir] [-S shebang] inputfile
+Usage: ${PROG} [options] inputfile
 EOF
 }
 
@@ -45,6 +45,7 @@ usage_help ()
     usage
     cat << EOF
 
+    -c config	configuration file
     -o outfile	output file name
     -P prolog	use 'prolog' file instead of default 'sys/prolog'
     -R basedir	base directory to search include files
@@ -63,8 +64,9 @@ get_options ()
     local _opt=""
 
     case "$1" in ( '-?' | '-help' | '--help' ) usage_help ;; esac
-    while getopts ":o:P:R:S:" _opt ; do
+    while getopts ":c:o:P:R:S:" _opt ; do
 	case "${_opt}" in
+	    ( 'c' ) OPT_CONF_FILE="$(absolute_path "${OPTARG}")" ;;
 	    ( 'o' ) OPT_OUTFILE="${OPTARG}" ;;
 	    ( 'P' ) OPT_PROLOG="${OPTARG}"  ;;
 	    ( 'R' ) OPT_ROOTDIR="${OPTARG}" ;;
