@@ -1,5 +1,5 @@
 #%shebang
-#%version 17
+#%version 18
 #
 # Execute commands on remote host
 #
@@ -46,17 +46,19 @@ usage_help ()
     Either combination of '-e' and '-f' flags or just 'command' should be set.
 
     Other options:
-    -A after	command to execute after processing
-    -B before	command to execute before processing
     -c config	configuration file
-    -d outdir	output directory for output files
     -C path	common search path for 'listfile' and 'cmdfile' (colon separated)
     -F path	search path for 'cmdfile' (colon separated)
     -L path	search path for 'listfile' (colon separated)
-    -O sshopts	options to 'ssh' command
+    -d outdir	output directory for output files
     -o outfile	output file or 'pattern' (%h is host, %u is user)
+    -O sshopts	options to 'ssh' command
+    -B before	command to execute before processing
+    -A after	command to execute after processing
     -p preexec	pre-exec command (%h is host, %u is user, %o is outfile)
     -P postexec	post-exec command (%h is host, %u is user, %o is outfile)
+    -j		parallel execution
+    -J jobs	maximum parallel processes (default: ${DEF_SE_JOBS})
     -q		print the resulting list of hosts (no commands execution)
     -s		sort list of hosts
     -v		print host name before execution
@@ -74,12 +76,13 @@ get_options ()
     local _hnum=0
 
     case "$1" in ( '-?' | '-help' | '--help' ) usage_help ;; esac
-    while getopts ":A:B:C:F:L:O:P:c:d:e:f:h:l:o:p:qsu:v" _opt ; do
+    while getopts ":A:B:C:F:J:L:O:P:c:d:e:f:h:jl:o:p:qsu:v" _opt ; do
 	case "${_opt}" in
 	    ( 'A' ) OPT_SE_AFTER="${OPTARG}" ;;
 	    ( 'B' ) OPT_SE_BEFORE="${OPTARG}" ;;
 	    ( 'C' ) OPT_SE_CPATH="${OPT_SE_CPATH:+${OPT_SE_CPATH}:}${OPTARG}" ;;
 	    ( 'F' ) OPT_SE_FPATH="${OPT_SE_FPATH:+${OPT_SE_FPATH}:}${OPTARG}" ;;
+	    ( 'J' ) OPT_SE_JOBS="${OPTARG}" ;;
 	    ( 'L' ) OPT_SE_LPATH="${OPT_SE_LPATH:+${OPT_SE_LPATH}:}${OPTARG}" ;;
 	    ( 'O' ) OPT_SE_SSHOPTS="${OPT_SE_SSHOPTS:+"${OPT_SE_SSHOPTS} "}${OPTARG}" ;;
 	    ( 'P' ) OPT_SE_POSTEXEC="${OPTARG}" ;;
@@ -103,6 +106,7 @@ get_options ()
 		eval SE_HLIST_H${_hnum}=\"\${OPTARG}\"
 		SE_HLIST="${SE_HLIST:+"${SE_HLIST} "}H${_hnum}"
 		;;
+	    ( 'j' ) F_JOBS="true" ;;
 	    ( 'l' )
 		test -n "${OPTARG}" || continue
 		_hnum="$(( ${_hnum} + 1 ))"
@@ -326,6 +330,7 @@ exec_ssh ()
     local _of=""
     local _pre=""
     local _post=""
+    local _job="${SE_JOBS}"
 
     # Execute 'before' command
     if test -n "${SE_BEFORE}" ; then
@@ -343,30 +348,48 @@ exec_ssh ()
 	    create_outfile "${_of}" || return 1
 	fi
 
-	# Execute pre-exec command
-	if test -n "${_pre}" ; then
-	    eval "${_pre}" || return 1
-	fi
-
 	# Print host name if verbose
 	test -n "${F_VERBOSE}" && printf "%s\n" "${_host}"
 
-	# Redirect input and output
-	exec 4<&0 0< "${W_CLIST}"
-	test -n "${_of}" && exec 5>&1 1>> "${_of}"
+	# Execute the following in background
+	(
+	    # Execute pre-exec command
+	    if test -n "${_pre}" ; then
+		eval "${_pre}" ||
+		    { err "non-zero status from pre-exec command '${_pre}'" ; return 1 ; }
+	    fi
 
-	# Finally execute 'ssh'
-	eval "${SSH}" "${SE_SSHOPTS}" -T -l "${_user}" "${_host}"
+	    # Redirect input and output
+	    exec 4<&0 0< "${W_CLIST}"
+	    test -n "${_of}" && exec 5>&1 1>> "${_of}"
 
-	# Restore input and output
-	exec 0<&4 4<&-
-	test -n "${_of}" && exec 1>&5 5>&-
+	    # Finally execute 'ssh'
+	    eval "${SSH}" "${SE_SSHOPTS}" -T -l "${_user}" "${_host}"
 
-	# Execute post-exec command
-	if test -n "${_post}" ; then
-	    eval "${_post}" || return 1
+	    # Restore input and output
+	    exec 0<&4 4<&-
+	    test -n "${_of}" && exec 1>&5 5>&-
+
+	    # Execute post-exec command
+	    if test -n "${_post}" ; then
+		eval "${_post}" ||
+		    { err "non-zero status from post-exec command '${_post}'" ; return 1 ; }
+	    fi
+	) &
+	if test -n "${F_JOBS}" ; then
+	    _job="$(( ${_job} - 1 ))"
+	    if test "${_job}" -le 0 ; then
+		wait			# Wait for running background processes
+		_job="${SE_JOBS}"	# Reset counter
+	    fi
+	else
+	    # Wait single process if not parallel execution
+	    wait
 	fi
     done < "${W_HLIST}"
+
+    # Wait for all background processes
+    test -n "${F_JOBS}" && wait
 
     # Execute 'after' command
     if test -n "${SE_AFTER}" ; then
@@ -630,11 +653,14 @@ init ()
     # Initialize variables
     var_init SE_CMD SE_CMDFILE SE_HOST SE_LIST SE_SSHOPTS SE_USER \
 	     SE_OUTDIR SE_OUTFILE SE_CPATH SE_FPATH SE_LPATH \
-	     SE_BEFORE SE_AFTER SE_PREEXEC SE_POSTEXEC	&&
+	     SE_BEFORE SE_AFTER SE_PREEXEC SE_POSTEXEC SE_JOBS	&&
     {
 	# Set defaults
 	DEF_SE_OUTDIR="$(pwd)"
 	DEF_SE_USER="$(cmd id -un)"
+	DEF_SE_JOBS="8"
+    } &&
+    {
 	# Define 'internal' variables
 	SSH="$(command -v ssh)"
 	WORKDIR="${TMPDIR:-/tmp}/${PROG}.$$"
@@ -643,6 +669,7 @@ init ()
 	PSTACK=""
 	SE_CLIST=""
 	SE_HLIST=""
+	F_JOBS=""
 	F_FMTOUT=""
 	F_FMTPRE=""
 	F_FMTPOST=""
@@ -661,7 +688,7 @@ init ()
     # Set variables
     var_set  SE_CMD SE_CMDFILE SE_HOST SE_LIST SE_SSHOPTS SE_USER \
 	     SE_OUTDIR SE_OUTFILE SE_CPATH SE_FPATH SE_LPATH \
-	     SE_BEFORE SE_AFTER SE_PREEXEC SE_POSTEXEC
+	     SE_BEFORE SE_AFTER SE_PREEXEC SE_POSTEXEC SE_JOBS
 }
 
 # Startup subroutine
@@ -708,6 +735,11 @@ startup ()
     # Check pre/post commands
     check_prepost || return 1
 
+    # Check jobs variable
+    case "${SE_JOBS}" in
+	( *[![:digit:]]* ) err "'jobs' is not a number" ; return 1 ;;
+    esac
+
     # Check working directory
     ( umask 0077 ; check_dir "${WORKDIR}" ) || return 1
     # Try to create working files
@@ -727,6 +759,10 @@ cleanup ()
 # Clean up the staff and exit with error
 clean_fail ()
 {
+    if test -n "${trapped}" ; then
+	trap '' HUP INT TERM	# Ignore signals
+	kill 0			# Send signal to entire process group
+    fi
     cleanup
     fail "${1:-1}"
 }
@@ -743,7 +779,7 @@ fail ()
 main ()
 {
     init "$@" && startup || fail
-    trap 'clean_fail 130' HUP INT TERM
+    trap 'trapped=yes clean_fail 130' HUP INT TERM
     {
 	mk_hostlist	&&
 	if test -n "${F_PRINT}" ; then
