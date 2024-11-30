@@ -1,5 +1,5 @@
 #%shebang
-#%version 18
+#%version 19
 #
 # Execute commands on remote host
 #
@@ -59,6 +59,7 @@ usage_help ()
     -P postexec	post-exec command (%h is host, %u is user, %o is outfile)
     -j		parallel execution
     -J jobs	maximum parallel processes (default: ${DEF_SE_JOBS})
+    -n		suppress login messages
     -q		print the resulting list of hosts (no commands execution)
     -s		sort list of hosts
     -v		print host name before execution
@@ -76,7 +77,7 @@ get_options ()
     local _hnum=0
 
     case "$1" in ( '-?' | '-help' | '--help' ) usage_help ;; esac
-    while getopts ":A:B:C:F:J:L:O:P:c:d:e:f:h:jl:o:p:qsu:v" _opt ; do
+    while getopts ":A:B:C:F:J:L:O:P:c:d:e:f:h:jl:no:p:qsu:v" _opt ; do
 	case "${_opt}" in
 	    ( 'A' ) OPT_SE_AFTER="${OPTARG}" ;;
 	    ( 'B' ) OPT_SE_BEFORE="${OPTARG}" ;;
@@ -113,6 +114,7 @@ get_options ()
 		eval SE_HLIST_L${_hnum}=\"\${OPTARG}\"
 		SE_HLIST="${SE_HLIST:+"${SE_HLIST} "}L${_hnum}"
 		;;
+	    ( 'n' ) F_NOMOTD="true" ;;
 	    ( 'o' ) OPT_SE_OUTFILE="${OPTARG}" ;;
 	    ( 'p' ) OPT_SE_PREEXEC="${OPTARG}" ;;
 	    ( 'q' ) F_PRINT="true" ;;
@@ -364,7 +366,11 @@ exec_ssh ()
 	    test -n "${_of}" && exec 5>&1 1>> "${_of}"
 
 	    # Finally execute 'ssh'
-	    eval "${SSH}" "${SE_SSHOPTS}" -T -l "${_user}" "${_host}"
+	    if test -n "${F_NOMOTD}" ; then
+		eval "${SSH}" -T "${SE_SSHOPTS}" -l "${_user}" "${_host}" "'\$SHELL -s'"
+	    else
+		eval "${SSH}" -T "${SE_SSHOPTS}" -l "${_user}" "${_host}"
+	    fi
 
 	    # Restore input and output
 	    exec 0<&4 4<&-
@@ -673,6 +679,7 @@ init ()
 	F_FMTOUT=""
 	F_FMTPRE=""
 	F_FMTPOST=""
+	F_NOMOTD=""
 	F_PRINT=""
 	F_SORT=""
 	F_VERBOSE=""
