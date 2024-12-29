@@ -286,7 +286,7 @@ do_include ()
 # Examine directive and call handler
 do_directive ()
 {
-    local s="$(trim "${CURLINE#'#%'}")"		# Cut '#%' and trim spaces
+    local s="$(trim "${CURLINE#${MAGIC}}")"	# Cut '#%' and trim spaces
     local d="${s%%[[:space:]]*}"		# Get directive
     local args="$(ltrim "${s#${d}}")"		# Get arguments
 
@@ -307,7 +307,7 @@ output_line ()
 process_line ()
 {
     case "${CURLINE}" in
-	( '#%'* ) do_directive || return 1 ;;
+	( "${MAGIC}"* ) do_directive || return 1 ;;
 	( * ) output_line ;;
     esac
 }
@@ -350,6 +350,7 @@ init ()
     set -o noglob	# Do not expand pathnames
     INCLIST=""		# List of include directories
     INFILE=""		# Input file (empty for 'stdin')
+    MAGIC="#%"		# 'Magic' string for directives
     OUTFILE=""		# Output file (empty for 'stdout')
 }
 
