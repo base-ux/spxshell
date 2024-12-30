@@ -50,14 +50,14 @@ get_options ()
     case "$1" in ( '-?' | '-help' | '--help' ) usage_help ;; esac
     while getopts ":D:I:U:o:" opt ; do
 	case "${opt}" in
-	    ( 'D' ) def_var "${OPTARG}"     || return 1 ;;
-	    ( 'I' ) add_inclist "${OPTARG}" || return 1 ;;
-	    ( 'U' ) undef_var "${OPTARG}"   || return 1 ;;
+	    ( 'D' ) add_var "${OPTARG}" ;;
+	    ( 'I' ) add_inclist "${OPTARG}" ;;
+	    ( 'U' ) del_var "${OPTARG}" ;;
 	    ( 'o' ) OUTFILE="${OPTARG}" ;;
-	    ( ':' ) err "missing argument for option -- '${OPTARG}'" ; usage ; return 1 ;;
-	    ( '?' ) err "unknown option -- '${OPTARG}'" ; usage ; return 1 ;;
-	    (  *  ) err "no handler for option '${opt}'" ; return 1 ;;
-	esac
+	    ( ':' ) err "missing argument for option -- '${OPTARG}'" ; usage ; false ;;
+	    ( '?' ) err "unknown option -- '${OPTARG}'" ; usage ; false ;;
+	    (  *  ) err "no handler for option '${opt}'" ; false ;;
+	esac || return 1
     done
     shift $(( OPTIND - 1 ))
     test $# -le 1 || { err "too many arguments" ; usage ; return 1 ; }
@@ -211,6 +211,12 @@ canon_path ()
 
 ####
 
+# Add directory to include list
+add_inclist ()
+{
+    INCLIST="${INCLIST:+"${INCLIST} "}$(squote "$1")"
+}
+
 # Check variable name (in subshell)
 check_vname ()
 (
@@ -222,26 +228,32 @@ check_vname ()
     esac
 )
 
-# Define variable
-def_var ()
+# Add variable
+add_var ()
 {
     local var="$1"
     local val="1"	# Default value
 
     case "${var}" in ( *'='* ) val="${var#*=}" ; var="${var%%=*}" ;; esac
-    check_vname "${var}" && eval "V_${var}=\"\${val}\"" || return 1
+    check_vname "${var}" && eval "$(def_var "${var}" "${val}")" || return 1
 }
 
-# Undefine variable
+# Delete variable
+del_var ()
+{
+    check_vname "$1" && eval "$(undef_var "$1")" || return 1
+}
+
+# Print command to define variable
+def_var ()
+{
+    printf "V_%s=%s" "$1" "$(squote "$2")"
+}
+
+# Print command to undefine variable
 undef_var ()
 {
-    check_vname "$1" && unset -v "V_$1" || return 1
-}
-
-# Add directory to include list
-add_inclist ()
-{
-    INCLIST="${INCLIST:+"${INCLIST} "}$(squote "$1")"
+    printf "unset -v V_%s" "$1"
 }
 
 ####
@@ -272,29 +284,54 @@ search_inc ()
 
 ####
 
-# Process '#%include' directive
+# Process 'define' directive
+do_define ()
+{
+    local args="$1"
+    local var="${args%%[[:space:]]*}"		# Get variable name
+    local val="$(ltrim "${args#${var}}")"	# Get variable value
+
+    test -n "${var}" || { err "no parameters set for 'define' directive" ; return 1 ; }
+    check_vname "${var}" || return 1
+    test -n "${val}" || val="1"		# Default value
+    case "${val}" in ( \"*\" ) val="${val#\"}" ; val="${val%\"}" ;; esac	# Remove quotes
+    def_var "${var}" "${val}"
+}
+
+# Process 'include' directive
 do_include ()
 {
     local f="$1"
 
-    case "$f" in ( \"*\" ) f="${f#\"}" ; f="${f%\"}" ;; esac	# Remove quotes
-    test -n "${f}" || { err "no parameters set for '#%include' directive" ; return 1 ; }
+    case "${f}" in ( \"*\" ) f="${f#\"}" ; f="${f%\"}" ;; esac	# Remove quotes
+    test -n "${f}" || { err "no parameters set for 'include' directive" ; return 1 ; }
     search_inc "${f}" || { err "can't find include file '${f}'" ; return 1 ; }
     process_file "${f}"
+}
+
+# Process 'undef' directive
+do_undef ()
+{
+    local var="$1"
+
+    test -n "${var}" || { err "no parameters set for 'undef' directive" ; return 1 ; }
+    check_vname "${var}" || return 1
+    undef_var "${var}"
 }
 
 # Examine directive and call handler
 do_directive ()
 {
-    local s="$(trim "${CURLINE#${MAGIC}}")"	# Cut '#%' and trim spaces
+    local s="$(trim "${CURLINE#${MAGIC}}")"	# Cut 'magic' and trim spaces
     local d="${s%%[[:space:]]*}"		# Get directive
     local args="$(ltrim "${s#${d}}")"		# Get arguments
 
     case "${d}" in
-	( '' ) ;;	# Skip empty directives
-	( "include" ) do_include "${args}" || return 1 ;;
+	( "define" | "include" | "undef" ) ;;
+	( '' ) return 0 ;;	# Skip empty directives
 	( *  ) err "unknown directive '${d}'" ; return 1 ;;
     esac
+    do_${d} "${args}"
 }
 
 # Output current line
@@ -315,9 +352,11 @@ process_line ()
 # Process file (in subshell)
 process_file ()
 (
-    local if="$1"
-    local cf=""
-    local ln=0
+    local if="$1"	# Input file name
+    local cf=""		# Canonical file name
+    local ln=0		# Line number
+    local ret=""	# String returned from 'down' level
+    local up=""		# String that should be returned to 'up' level
 
     # Check file and open for input
     # FSTACK (file stack) is used for cycles determination
@@ -332,14 +371,30 @@ process_file ()
 	return 1
     fi
 
-    # Read file
     # CURFILE (current file) is used by 'search_inc'
     # CURLINE (current line) is used as global buffer
+    # LVL (current level) is used for nesting control
+    #  The main idea: since 'process_file' is executed in subshell we need
+    #  the method of 'transfer' variables defined at 'down' subshell environment
+    #  to the 'up' environment (see 'variable visibility scope' for subshells).
+    #  This is used for 'define' and 'undef' directives to set or unset
+    #  variables in included files and which must be visible at the 'global' level
     CURFILE="${if}"
+    LVL=$(( ${LVL-0} + 1 ))
+    # Read file line by line
     while IFS= read -r CURLINE ; do
 	ln=$(( ln + 1 ))
-	process_line || { err "in file '${if:-stdin}':${ln}" ; return 1 ; }
+	ret="$(process_line)" || { err "in file '${if:-<stdin>}':${ln}" ; return 1 ; }
+	if test ${#ret} -gt 0 ; then
+	    # If there is something 'transfered' from 'down' level
+	    # then 'apply' it to the current context and add it to the string
+	    # which will be 'transfered' to 'up' level (except the 'upper' level)
+	    eval "${ret}"
+	    test ${LVL} -gt 1 && up="${up:+"${up} ; "}${ret}"
+	fi
     done
+    # 'Transfer' something to 'up' level if any
+    test ${#up} -gt 0 && printf "%s" "${up}" || true
 )
 
 ####
