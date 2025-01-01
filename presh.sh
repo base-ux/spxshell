@@ -284,6 +284,18 @@ search_inc ()
 
 ####
 
+# Evaluate value and add to return string
+eval_ret ()
+{
+    case "$1" in
+	( '' ) ;;
+	( *  )
+	    eval "$1"
+	    RET="${RET:+"${RET} ; "}$1"
+	    ;;
+    esac
+}
+
 # Process 'define' directive
 do_define ()
 {
@@ -295,7 +307,7 @@ do_define ()
     check_vname "${var}" || return 1
     test -n "${val}" || val="1"		# Default value
     case "${val}" in ( \"*\" ) val="${val#\"}" ; val="${val%\"}" ;; esac	# Remove quotes
-    def_var "${var}" "${val}"
+    eval_ret "$(def_var "${var}" "${val}")"
 }
 
 # Process 'include' directive
@@ -306,7 +318,7 @@ do_include ()
     case "${f}" in ( \"*\" ) f="${f#\"}" ; f="${f%\"}" ;; esac	# Remove quotes
     test -n "${f}" || { err "no parameters set for 'include' directive" ; return 1 ; }
     search_inc "${f}" || { err "can't find include file '${f}'" ; return 1 ; }
-    process_file "${f}"
+    eval_ret "$(process_file "${f}")"
 }
 
 # Process 'undef' directive
@@ -316,7 +328,69 @@ do_undef ()
 
     test -n "${var}" || { err "no parameters set for 'undef' directive" ; return 1 ; }
     check_vname "${var}" || return 1
-    undef_var "${var}"
+    eval_ret "$(undef_var "${var}")"
+}
+
+# Process 'ifdef' directive
+do_ifdef ()
+{
+    local var="$1"
+
+    IFLVL=$(( IFLVL + 1 ))
+    if test $P -eq 0 ; then
+	test -n "${var}" || { err "no parameters set for 'ifdef' directive" ; return 1 ; }
+	check_vname "${var}" || return 1
+	eval "test \"X\" = \"\${V_${var}+X}\"" && P=0 || P=${IFLVL}
+    fi
+    IFSTACK="${IFSTACK}|ifdef:${LN}"
+}
+
+# Process 'ifndef' directive
+do_ifndef ()
+{
+    local var="$1"
+
+    IFLVL=$(( IFLVL + 1 ))
+    if test $P -eq 0 ; then
+	test -n "${var}" || { err "no parameters set for 'ifndef' directive" ; return 1 ; }
+	check_vname "${var}" || return 1
+	eval "test \"X\" = \"\${V_${var}+X}\"" && P=${IFLVL} || P=0
+    fi
+    IFSTACK="${IFSTACK}|ifndef:${LN}"
+}
+
+# Process 'else' directive
+do_else ()
+{
+    case "$P" in
+	( 0 | ${IFLVL} )
+	    case "${IFSTACK}" in
+		( '' ) err "'else' without 'if'" ; return 1 ;;
+		( *  )
+		    test -n "$1" && { err "extra parameters for 'else' directive" ; return 1 ; }
+		    case "${IFSTACK##*|}" in
+			( "else"* ) err "'else' after 'else'" ; return 1 ;;
+			( * ) test $P -eq 0 && P=${IFLVL} || P=0 ;;
+		    esac ;;
+	    esac ;;
+    esac
+    IFSTACK="${IFSTACK%|*}|else:${LN}"
+}
+
+# Process 'endif' directive
+do_endif ()
+{
+    case "$P" in
+	( 0 | ${IFLVL} )
+	    case "${IFSTACK}" in
+		( '' ) err "'endif' without 'if'" ; return 1 ;;
+		( *  )
+		    test -n "$1" && { err "extra parameters for 'endif' directive" ; return 1 ; }
+		    P=0 ;;
+	    esac ;;
+    esac
+    IFLVL=$(( IFLVL - 1 ))
+    IFSTACK="${IFSTACK%|*}"
 }
 
 # Examine directive and call handler
@@ -327,8 +401,9 @@ do_directive ()
     local args="$(ltrim "${s#${d}}")"		# Get arguments
 
     case "${d}" in
-	( "define" | "include" | "undef" ) ;;
-	( '' ) return 0 ;;	# Skip empty directives
+	( '' | '#'* ) return 0 ;;	# Skip empty directives and comments
+	( "ifdef" | "ifndef" | "else" | "endif" ) ;;
+	( "define" | "include" | "undef" ) test $P -eq 0 || return 0 ;;
 	( *  ) err "unknown directive '${d}'" ; return 1 ;;
     esac
     do_${d} "${args}"
@@ -345,8 +420,18 @@ process_line ()
 {
     case "${CURLINE}" in
 	( "${MAGIC}"* ) do_directive || return 1 ;;
-	( * ) output_line ;;
+	( * ) test $P -eq 0 && output_line || true ;;
     esac
+}
+
+# Print error for unterminated directive
+err_unterm ()
+{
+    local e="${IFSTACK##*|}"
+    local d="${e%:*}"
+    local l="${e#*:}"
+
+    err "unterminated '${d}' directive at '${CURFILE:-<stdin>}':${l}"
 }
 
 # Process file (in subshell)
@@ -354,9 +439,6 @@ process_file ()
 (
     local if="$1"	# Input file name
     local cf=""		# Canonical file name
-    local ln=0		# Line number
-    local ret=""	# String returned from 'down' level
-    local up=""		# String that should be returned to 'up' level
 
     # Check file and open for input
     # FSTACK (file stack) is used for cycles determination
@@ -371,30 +453,27 @@ process_file ()
 	return 1
     fi
 
-    # CURFILE (current file) is used by 'search_inc'
-    # CURLINE (current line) is used as global buffer
-    # LVL (current level) is used for nesting control
     #  The main idea: since 'process_file' is executed in subshell we need
     #  the method of 'transfer' variables defined at 'down' subshell environment
     #  to the 'up' environment (see 'variable visibility scope' for subshells).
     #  This is used for 'define' and 'undef' directives to set or unset
     #  variables in included files and which must be visible at the 'global' level
-    CURFILE="${if}"
-    LVL=$(( ${LVL-0} + 1 ))
+    CURFILE="${if}"	# CURFILE (current file) is used by 'search_inc'
+    IFLVL=0		# IFLVL (current 'if' stack level)
+    IFSTACK=""		# IFSTACK ('if' stack) is used for nesting 'if...' directives
+    LN=0		# LN (line number) contains current line number
+    LVL=$(( ${LVL:-0} + 1 ))	# LVL (current level) is used for nesting control
+    P=0			# P (process) is used as flag for conditional processing
+    RET=""		# RET (return) is the string that should be passed to 'up' level
     # Read file line by line
-    while IFS= read -r CURLINE ; do
-	ln=$(( ln + 1 ))
-	ret="$(process_line)" || { err "in file '${if:-<stdin>}':${ln}" ; return 1 ; }
-	if test ${#ret} -gt 0 ; then
-	    # If there is something 'transfered' from 'down' level
-	    # then 'apply' it to the current context and add it to the string
-	    # which will be 'transfered' to 'up' level (except the 'upper' level)
-	    eval "${ret}"
-	    test ${LVL} -gt 1 && up="${up:+"${up} ; "}${ret}"
-	fi
+    while IFS= read -r CURLINE ; do	# CURLINE (current line) is used as global buffer
+	LN=$(( LN + 1 ))
+	process_line || { err "in file '${if:-<stdin>}':${LN}" ; return 1 ; }
     done
+    # Check for unterminated 'if...' directives
+    test ${IFLVL} -eq 0 || { err_unterm ; return 1 ; }
     # 'Transfer' something to 'up' level if any
-    test ${#up} -gt 0 && printf "%s" "${up}" || true
+    test ${LVL} -gt 1 && printf "%s" "${RET}" || true
 )
 
 ####
