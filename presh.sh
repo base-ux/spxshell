@@ -393,6 +393,16 @@ do_endif ()
     IFSTACK="${IFSTACK%|*}"
 }
 
+# Process 'error' directive
+do_error ()
+{
+    local m="$1"
+
+    case "${m}" in ( \"*\" ) m="${m#\"}" ; m="${m%\"}" ;; esac	# Remove quotes
+    err "'error' directive: '${m}'"
+    return 1
+}
+
 # Examine directive and call handler
 do_directive ()
 {
@@ -403,7 +413,7 @@ do_directive ()
     case "${d}" in
 	( '' | '#'* ) return 0 ;;	# Skip empty directives and comments
 	( "ifdef" | "ifndef" | "else" | "endif" ) ;;
-	( "define" | "include" | "undef" ) test $P -eq 0 || return 0 ;;
+	( "define" | "error" | "include" | "undef" ) test $P -eq 0 || return 0 ;;
 	( * ) test $P -eq 0 && { err "unknown directive '${d}'" ; return 1 ; } || return 0 ;;
     esac
     do_${d} "${args}"
