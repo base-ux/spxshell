@@ -404,7 +404,7 @@ do_directive ()
 	( '' | '#'* ) return 0 ;;	# Skip empty directives and comments
 	( "ifdef" | "ifndef" | "else" | "endif" ) ;;
 	( "define" | "include" | "undef" ) test $P -eq 0 || return 0 ;;
-	( *  ) err "unknown directive '${d}'" ; return 1 ;;
+	( * ) test $P -eq 0 && { err "unknown directive '${d}'" ; return 1 ; } || return 0 ;;
     esac
     do_${d} "${args}"
 }
