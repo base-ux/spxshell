@@ -340,7 +340,7 @@ do_ifdef ()
     if test $P -eq 0 ; then
 	test -n "${var}" || { err "no parameters set for 'ifdef' directive" ; return 1 ; }
 	check_vname "${var}" || return 1
-	eval "test \"X\" = \"\${V_${var}+X}\"" && P=0 || P=${IFLVL}
+	eval "test \"X\" = \"\${V_${var}+X}\"" && P=0 || P=-${IFLVL}
     fi
     IFSTACK="${IFSTACK}|ifdef:${LN}"
 }
@@ -354,24 +354,66 @@ do_ifndef ()
     if test $P -eq 0 ; then
 	test -n "${var}" || { err "no parameters set for 'ifndef' directive" ; return 1 ; }
 	check_vname "${var}" || return 1
-	eval "test \"X\" = \"\${V_${var}+X}\"" && P=${IFLVL} || P=0
+	eval "test \"X\" = \"\${V_${var}+X}\"" && P=-${IFLVL} || P=0
     fi
     IFSTACK="${IFSTACK}|ifndef:${LN}"
+}
+
+# Process 'elifdef' directive
+do_elifdef ()
+{
+    local var="$1"
+
+    case "$P" in
+	( 0 | ${IFLVL} | -${IFLVL} )
+	    case "${IFSTACK##*|}" in
+		( '' ) err "'elifdef' without 'if'" ; return 1 ;;
+		( "else"* ) err "'elifdef' after 'else'" ; return 1 ;;
+	    esac
+	    test -n "${var}" || { err "no parameters set for 'elifdef' directive" ; return 1 ; }
+	    check_vname "${var}" || return 1
+	    case "$P" in
+		( 0 ) P=${IFLVL} ;;
+		( -${IFLVL} ) eval "test \"X\" = \"\${V_${var}+X}\"" && P=0 ;;
+	    esac ;;
+    esac
+    IFSTACK="${IFSTACK%|*}|elifdef:${LN}"
+}
+
+# Process 'elifndef' directive
+do_elifndef ()
+{
+    local var="$1"
+
+    case "$P" in
+	( 0 | ${IFLVL} | -${IFLVL} )
+	    case "${IFSTACK##*|}" in
+		( '' ) err "'elifndef' without 'if'" ; return 1 ;;
+		( "else"* ) err "'elifndef' after 'else'" ; return 1 ;;
+	    esac
+	    test -n "${var}" || { err "no parameters set for 'elifndef' directive" ; return 1 ; }
+	    check_vname "${var}" || return 1
+	    case "$P" in
+		( 0 ) P=${IFLVL} ;;
+		( -${IFLVL} ) eval "test \"X\" = \"\${V_${var}+X}\"" || P=0 ;;
+	    esac ;;
+    esac
+    IFSTACK="${IFSTACK%|*}|elifndef:${LN}"
 }
 
 # Process 'else' directive
 do_else ()
 {
     case "$P" in
-	( 0 | ${IFLVL} )
-	    case "${IFSTACK}" in
+	( 0 | ${IFLVL} | -${IFLVL} )
+	    case "${IFSTACK##*|}" in
 		( '' ) err "'else' without 'if'" ; return 1 ;;
-		( *  )
-		    test -n "$1" && { err "extra parameters for 'else' directive" ; return 1 ; }
-		    case "${IFSTACK##*|}" in
-			( "else"* ) err "'else' after 'else'" ; return 1 ;;
-			( * ) test $P -eq 0 && P=${IFLVL} || P=0 ;;
-		    esac ;;
+		( "else"* ) err "'else' after 'else'" ; return 1 ;;
+	    esac
+	    test -n "$1" && { err "extra parameters for 'else' directive" ; return 1 ; }
+	    case "$P" in
+		( 0 ) P=${IFLVL} ;;
+		( -${IFLVL} ) P=0 ;;
 	    esac ;;
     esac
     IFSTACK="${IFSTACK%|*}|else:${LN}"
@@ -381,13 +423,10 @@ do_else ()
 do_endif ()
 {
     case "$P" in
-	( 0 | ${IFLVL} )
-	    case "${IFSTACK}" in
-		( '' ) err "'endif' without 'if'" ; return 1 ;;
-		( *  )
-		    test -n "$1" && { err "extra parameters for 'endif' directive" ; return 1 ; }
-		    P=0 ;;
-	    esac ;;
+	( 0 | ${IFLVL} | -${IFLVL} )
+	    case "${IFSTACK}" in ( '' ) err "'endif' without 'if'" ; return 1 ;; esac
+	    test -n "$1" && { err "extra parameters for 'endif' directive" ; return 1 ; }
+	    P=0 ;;
     esac
     IFLVL=$(( IFLVL - 1 ))
     IFSTACK="${IFSTACK%|*}"
@@ -403,6 +442,8 @@ do_error ()
     return 1
 }
 
+####
+
 # Examine directive and call handler
 do_directive ()
 {
@@ -412,7 +453,7 @@ do_directive ()
 
     case "${d}" in
 	( '' | '#'* ) return 0 ;;	# Skip empty directives and comments
-	( "ifdef" | "ifndef" | "else" | "endif" ) ;;
+	( "ifdef" | "ifndef" | "elifdef" | "elifndef" | "else" | "endif" ) ;;
 	( "define" | "error" | "include" | "undef" ) test $P -eq 0 || return 0 ;;
 	( * ) test $P -eq 0 && { err "unknown directive '${d}'" ; return 1 ; } || return 0 ;;
     esac
