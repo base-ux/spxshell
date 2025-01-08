@@ -100,21 +100,20 @@ squote ()
     while : ; do
 	# Check for quotes
 	case "${e}" in
-	    ( '' ) break ;;		# Empty string
-	    ( *"'"* )
+	    ( *\'* )
 		# There are quotes in the element
-		h="${e%%"'"*}"		# Get 'head' till quote
-		e="${e#${h}"'"}"	# Cut 'head' with quote
+		h="${e%%\'*}"		# Get 'head' till quote
+		e="${e#*\'}"		# Cut 'head' with quote
 		n="${n}${h}'\''"	# Add 'head' to 'new' with quoted quote
 		;;
 	    ( * )
 		# No more quotes found
-		e="${n}${e}"		# Construct final string
+		e="'${n}${e}'"		# Construct final string
 		break			# and exit the cycle
 		;;
 	esac
     done
-    printf "'%s'" "${e}"
+    printf "%s" "${e}"
 }
 
 # Trim leading spaces
@@ -124,7 +123,7 @@ ltrim ()
     local d=""
 
     case "${s}" in ( [[:space:]]* ) d="${s%%[![:space:]]*}" ;; esac
-    printf "%s" "${s#${d}}"
+    printf "%s" "${s#"${d}"}"
 }
 
 # Trim trailing spaces
@@ -134,7 +133,7 @@ rtrim ()
     local d=""
 
     case "${s}" in ( *[[:space:]] ) d="${s##*[![:space:]]}" ;; esac
-    printf "%s" "${s%${d}}"
+    printf "%s" "${s%"${d}"}"
 }
 
 # Trim spaces
@@ -301,7 +300,7 @@ do_define ()
 {
     local args="$1"
     local var="${args%%[[:space:]]*}"		# Get variable name
-    local val="$(ltrim "${args#${var}}")"	# Get variable value
+    local val="$(ltrim "${args#"${var}"}")"	# Get variable value
 
     test -n "${var}" || { err "no parameters set for 'define' directive" ; return 1 ; }
     check_vname "${var}" || return 1
@@ -447,9 +446,9 @@ do_error ()
 # Examine directive and call handler
 do_directive ()
 {
-    local s="$(trim "${CURLINE#${MAGIC}}")"	# Cut 'magic' and trim spaces
+    local s="$(trim "${CURLINE#"${MAGIC}"}")"	# Cut 'magic' and trim spaces
     local d="${s%%[[:space:]]*}"		# Get directive
-    local args="$(ltrim "${s#${d}}")"		# Get arguments
+    local args="$(ltrim "${s#"${d}"}")"		# Get arguments
 
     case "${d}" in
 	( '' | '#'* ) return 0 ;;	# Skip empty directives and comments
@@ -460,10 +459,50 @@ do_directive ()
     do_${d} "${args}"
 }
 
+# Expand variables
+expand ()
+{
+    local s="$1"
+    local h=""
+    local t=""
+    local v=""
+    local u=""
+
+    case "${s}" in
+	( *"${LM}"*"${RM}"* )
+	    h="${s%%"${LM}"*}" ; t="${s#*"${RM}"}"	# Get 'head' and 'tail'
+	    v="${s%%"${RM}"*}" ; v="${v#*"${LM}"}"	# Get variable name
+	    {
+		check_vname "${v}"	&&		# Check variable name
+		case "|${VS}|" in
+		    ( *"|${v}|"* ) err "recursive expansion of variable '${v}'" ; false ;;
+		esac			&&
+		VS="${VS}|${v}"		&&		# Add to 'var stack'
+		eval "u=\"\${V_${v}}\""	&&		# Expand variable to value
+		case "${u}" in
+		    ( *"${LM}"*"${RM}"* ) u="$(expand "${u}")" ;;	# Recursively expand value
+		esac			&&
+		VS="${VS%"|${v}"}"	&&		# Remove from 'var stack'
+		case "${t}" in
+		    ( *"${LM}"*"${RM}"* ) t="$(expand "${t}")" ;;	# Expand 'tail'
+		esac
+	    } || return 1
+	    s="${h}${u}${t}"		# Construct expanded string
+	    ;;
+    esac
+    printf "%s" "${s}"
+}
+
 # Output current line
 output_line ()
 {
-    printf "%s\n" "${CURLINE}" >&3
+    local s=""
+
+    case "${CURLINE}" in
+	( *"${LM}"*"${RM}"* )
+	    s="$(expand "${CURLINE}")" && printf "%s\n" "${s}" >&3 || return 1 ;;
+	( * ) printf "%s\n" "${CURLINE}" >&3 ;;
+    esac
 }
 
 # Process line
@@ -471,7 +510,9 @@ process_line ()
 {
     case "${CURLINE}" in
 	( "${MAGIC}"* ) do_directive || return 1 ;;
-	( * ) test $P -eq 0 && output_line || true ;;
+	( * )
+	    test $P -eq 0 || return 0
+	    output_line || return 1 ;;
     esac
 }
 
@@ -535,8 +576,10 @@ init ()
     set -o noglob	# Do not expand pathnames
     INCLIST=""		# List of include directories
     INFILE=""		# Input file (empty for 'stdin')
+    LM="#{"		# Left (opening) marker for variables
     MAGIC="#%"		# 'Magic' string for directives
     OUTFILE=""		# Output file (empty for 'stdout')
+    RM="}#"		# Right (closing) marker for variables
 }
 
 # Startup subroutine
