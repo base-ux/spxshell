@@ -316,8 +316,11 @@ do_include ()
 {
     local f="$1"
 
-    case "${f}" in ( \"*\" ) f="${f#\"}" ; f="${f%\"}" ;; esac	# Remove quotes
-    test -n "${f}" || { err "no parameters set for 'include' directive" ; return 1 ; }
+    case "${f}" in
+	( \"*\" ) f="${f#\"}" ; f="${f%\"}" ;;			# Remove quotes
+	( * ) f="$(expand "${LM}${f}${RM}")" || return 1 ;;	# Try to expand variable
+    esac
+    test -n "${f}" || { err "empty filename set for 'include' directive" ; return 1 ; }
     f="$(search_inc "${f}")" || return 1
     eval_ret "$(process_file "${f}")"
 }
