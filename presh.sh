@@ -262,9 +262,10 @@ search_inc ()
 {
     local f="$1"
     local d=""
+    local n=""
 
     case "${f}" in
-	( /* ) test -e "${f}" && return 0 ;;	# Absolute path
+	( /* ) test -e "${f}" && n="${f}" ;;	# Absolute path
 	(  * )
 	    # Relative to CURFILE
 	    case "${CURFILE}" in
@@ -274,11 +275,12 @@ search_inc ()
 	    # Prepend search list with CURFILE path
 	    eval "set -- $(squote "${d}") ${INCLIST}"
 	    for d in "$@" ; do
-		test -e "${d}/${f}" && return 0
+		test -e "${d}/${f}" && { n="${d}/${f}" ; break ; }
 	    done
 	    ;;
     esac
-    return 1
+    test -n "${n}" || { err "can't find include file '${f}'" ; return 1 ; }
+    printf "%s" "${n}"
 }
 
 ####
@@ -316,7 +318,7 @@ do_include ()
 
     case "${f}" in ( \"*\" ) f="${f#\"}" ; f="${f%\"}" ;; esac	# Remove quotes
     test -n "${f}" || { err "no parameters set for 'include' directive" ; return 1 ; }
-    search_inc "${f}" || { err "can't find include file '${f}'" ; return 1 ; }
+    f="$(search_inc "${f}")" || return 1
     eval_ret "$(process_file "${f}")"
 }
 
