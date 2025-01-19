@@ -19,9 +19,7 @@ PROG="$(basename -- "$0")"
 # Print usage information
 usage ()
 {
-    cat << EOF
-Usage: ${PROG} [options] infile
-EOF
+    ! printf "Usage: %s [options] infile\n" "${PROG}"
 }
 
 # Print help information
@@ -54,14 +52,13 @@ get_options ()
 	    ( 'I' ) add_inclist "${OPTARG}" ;;
 	    ( 'U' ) del_var "${OPTARG}" ;;
 	    ( 'o' ) OUTFILE="${OPTARG}" ;;
-	    ( ':' ) err "missing argument for option -- '${OPTARG}'" ; usage ; false ;;
-	    ( '?' ) err "unknown option -- '${OPTARG}'" ; usage ; false ;;
-	    (  *  ) err "no handler for option '${opt}'" ; false ;;
+	    ( ':' ) err "missing argument for option -- '${OPTARG}'" || usage ;;
+	    ( '?' ) err "unknown option -- '${OPTARG}'" || usage ;;
+	    (  *  ) err "no handler for option '${opt}'" ;;
 	esac || return 1
     done
     shift $(( OPTIND - 1 ))
-    test $# -le 1 || { err "too many arguments" ; usage ; return 1 ; }
-    INFILE="${1:-}"
+    test $# -le 1 && INFILE="${1:-}" || err "too many arguments" || usage
 }
 
 ####
@@ -69,7 +66,7 @@ get_options ()
 # Print error message
 err ()
 {
-    printf "%s: error: %s\n" "${PROG}" "$*" >&2
+    ! printf "%s: error: %s\n" "${PROG}" "$*" >&2
 }
 
 # Execute command
@@ -86,8 +83,8 @@ check_file ()
     local f="$1"
 
     test -n "${f}" || return 1
-    test -f "${f}" || { err "file '${f}' not found"  ; return 1 ; }
-    test -r "${f}" || { err "can't open file '${f}'" ; return 1 ; }
+    test -f "${f}" || err "file '${f}' not found"  || return 1
+    test -r "${f}" || err "can't open file '${f}'" || return 1
 }
 
 # Quote single quotes
@@ -227,8 +224,7 @@ check_vname ()
     LC_ALL=C		# Check variable name in POSIX locale
     case "$1" in
 	( '' | '_' | [![:alpha:]_]* | [[:alpha:]_]*[![:alnum:]_]* )
-	    err "illegal variable name: '$1'"
-	    return 1 ;;
+	    err "illegal variable name: '$1'" ;;
     esac
 )
 
@@ -284,7 +280,7 @@ search_inc ()
 	    done
 	    ;;
     esac
-    test -n "${n}" || { err "can't find include file '${f}'" ; return 1 ; }
+    test -n "${n}" || err "can't find include file '${f}'" || return 1
     printf "%s" "${n}"
 }
 
@@ -309,7 +305,7 @@ do_define ()
     local var="${args%%[[:space:]]*}"		# Get variable name
     local val="$(ltrim "${args#"${var}"}")"	# Get variable value
 
-    test -n "${var}" || { err "no parameters set for 'define' directive" ; return 1 ; }
+    test -n "${var}" || err "no parameters set for 'define' directive" || return 1
     check_vname "${var}" || return 1
     test -n "${val}" || val="1"		# Default value
     case "${val}" in ( \"*\" ) val="${val#\"}" ; val="${val%\"}" ;; esac	# Remove quotes
@@ -320,14 +316,16 @@ do_define ()
 do_include ()
 {
     local f="$1"
+    local ret=""
 
     case "${f}" in
 	( \"*\" ) f="${f#\"}" ; f="${f%\"}" ;;			# Remove quotes
 	( * ) f="$(expand "${LM}${f}${RM}")" || return 1 ;;	# Try to expand variable
     esac
-    test -n "${f}" || { err "empty filename set for 'include' directive" ; return 1 ; }
+    test -n "${f}" || err "empty filename set for 'include' directive" || return 1
     f="$(search_inc "${f}")" || return 1
-    eval_ret "$(process_file "${f}")"
+    ret="$(process_file "${f}")" || return 1
+    eval_ret "${ret}"
 }
 
 # Process 'undef' directive
@@ -335,7 +333,7 @@ do_undef ()
 {
     local var="$1"
 
-    test -n "${var}" || { err "no parameters set for 'undef' directive" ; return 1 ; }
+    test -n "${var}" || err "no parameters set for 'undef' directive" || return 1
     check_vname "${var}" || return 1
     eval_ret "$(undef_var "${var}")"
 }
@@ -347,7 +345,7 @@ do_ifdef ()
 
     IFLVL=$(( IFLVL + 1 ))
     if test $P -eq 0 ; then
-	test -n "${var}" || { err "no parameters set for 'ifdef' directive" ; return 1 ; }
+	test -n "${var}" || err "no parameters set for 'ifdef' directive" || return 1
 	check_vname "${var}" || return 1
 	eval "test \"X\" = \"\${V_${var}+X}\"" && P=0 || P=-${IFLVL}
     fi
@@ -361,7 +359,7 @@ do_ifndef ()
 
     IFLVL=$(( IFLVL + 1 ))
     if test $P -eq 0 ; then
-	test -n "${var}" || { err "no parameters set for 'ifndef' directive" ; return 1 ; }
+	test -n "${var}" || err "no parameters set for 'ifndef' directive" || return 1
 	check_vname "${var}" || return 1
 	eval "test \"X\" = \"\${V_${var}+X}\"" && P=-${IFLVL} || P=0
     fi
@@ -376,10 +374,10 @@ do_elifdef ()
     case "$P" in
 	( 0 | ${IFLVL} | -${IFLVL} )
 	    case "${IFSTACK##*|}" in
-		( '' ) err "'elifdef' without 'if'" ; return 1 ;;
-		( "else"* ) err "'elifdef' after 'else'" ; return 1 ;;
-	    esac
-	    test -n "${var}" || { err "no parameters set for 'elifdef' directive" ; return 1 ; }
+		( '' ) err "'elifdef' without 'if'" ;;
+		( "else"* ) err "'elifdef' after 'else'" ;;
+	    esac || return 1
+	    test -n "${var}" || err "no parameters set for 'elifdef' directive" || return 1
 	    check_vname "${var}" || return 1
 	    case "$P" in
 		( 0 ) P=${IFLVL} ;;
@@ -397,10 +395,10 @@ do_elifndef ()
     case "$P" in
 	( 0 | ${IFLVL} | -${IFLVL} )
 	    case "${IFSTACK##*|}" in
-		( '' ) err "'elifndef' without 'if'" ; return 1 ;;
-		( "else"* ) err "'elifndef' after 'else'" ; return 1 ;;
-	    esac
-	    test -n "${var}" || { err "no parameters set for 'elifndef' directive" ; return 1 ; }
+		( '' ) err "'elifndef' without 'if'" ;;
+		( "else"* ) err "'elifndef' after 'else'" ;;
+	    esac || return 1
+	    test -n "${var}" || err "no parameters set for 'elifndef' directive" || return 1
 	    check_vname "${var}" || return 1
 	    case "$P" in
 		( 0 ) P=${IFLVL} ;;
@@ -416,10 +414,10 @@ do_else ()
     case "$P" in
 	( 0 | ${IFLVL} | -${IFLVL} )
 	    case "${IFSTACK##*|}" in
-		( '' ) err "'else' without 'if'" ; return 1 ;;
-		( "else"* ) err "'else' after 'else'" ; return 1 ;;
-	    esac
-	    test -n "$1" && { err "extra parameters for 'else' directive" ; return 1 ; }
+		( '' ) err "'else' without 'if'" ;;
+		( "else"* ) err "'else' after 'else'" ;;
+	    esac || return 1
+	    test -z "$1" || err "extra parameters for 'else' directive" || return 1
 	    case "$P" in
 		( 0 ) P=${IFLVL} ;;
 		( -${IFLVL} ) P=0 ;;
@@ -433,8 +431,8 @@ do_endif ()
 {
     case "$P" in
 	( 0 | ${IFLVL} | -${IFLVL} )
-	    case "${IFSTACK}" in ( '' ) err "'endif' without 'if'" ; return 1 ;; esac
-	    test -n "$1" && { err "extra parameters for 'endif' directive" ; return 1 ; }
+	    case "${IFSTACK}" in ( '' ) err "'endif' without 'if'" || return 1 ;; esac
+	    test -z "$1" || err "extra parameters for 'endif' directive" || return 1
 	    P=0 ;;
     esac
     IFLVL=$(( IFLVL - 1 ))
@@ -447,8 +445,7 @@ do_error ()
     local m="$1"
 
     case "${m}" in ( \"*\" ) m="${m#\"}" ; m="${m%\"}" ;; esac	# Remove quotes
-    err "'error' directive: '${m}'"
-    return 1
+    err "'error' directive: '${m}'" || return 1
 }
 
 ####
@@ -464,7 +461,7 @@ do_directive ()
 	( '' | '#'* ) return 0 ;;	# Skip empty directives and comments
 	( "ifdef" | "ifndef" | "elifdef" | "elifndef" | "else" | "endif" ) ;;
 	( "define" | "error" | "include" | "undef" ) test $P -eq 0 || return 0 ;;
-	( * ) test $P -eq 0 && { err "unknown directive '${d}'" ; return 1 ; } || return 0 ;;
+	( * ) test $P -ne 0 && return 0 || err "unknown directive '${d}'" || return 1 ;;
     esac
     do_${d} "${args}"
 }
@@ -485,7 +482,7 @@ expand ()
 	    {
 		check_vname "${v}"	&&		# Check variable name
 		case "|${VS}|" in
-		    ( *"|${v}|"* ) err "recursive expansion of variable '${v}'" ; false ;;
+		    ( *"|${v}|"* ) err "recursive expansion of variable '${v}'" ;;
 		esac			&&
 		VS="${VS}|${v}"		&&		# Add to 'var stack'
 		eval "u=\"\${V_${v}}\""	&&		# Expand variable to value
@@ -548,7 +545,7 @@ process_file ()
 	check_file "${if}"		&&
 	cf="$(canon_path "${if}")"	&&
 	case "|${FSTACK}|" in
-	    ( *"|${cf}|"* ) err "cyclic include of file '${cf}'" ; false ;;
+	    ( *"|${cf}|"* ) err "cyclic include of file '${cf}'" ;;
 	    ( * ) FSTACK="${FSTACK:+${FSTACK}|}${cf}" ;;
 	esac				&&
 	exec 0< "${if}"			||	# Open input file
@@ -570,10 +567,10 @@ process_file ()
     # Read file line by line
     while IFS= read -r CURLINE ; do	# CURLINE (current line) is used as global buffer
 	LN=$(( LN + 1 ))
-	process_line || { err "in file '${if:-<stdin>}':${LN}" ; return 1 ; }
+	process_line || err "in file '${if:-<stdin>}':${LN}" || return 1
     done
     # Check for unterminated 'if...' directives
-    test ${IFLVL} -eq 0 || { err_unterm ; return 1 ; }
+    test ${IFLVL} -eq 0 || err_unterm || return 1
     # 'Transfer' something to 'up' level if any
     test ${LVL} -gt 1 && printf "%s" "${RET}" || true
 )
@@ -603,7 +600,7 @@ startup ()
     if test -n "${OUTFILE}" ; then
 	# If output file is set then try to create it
 	( : > "${OUTFILE}" ) 2>/dev/null ||
-	    { err "can't create output file '${OUTFILE}'" ; return 1 ; }
+	    err "can't create output file '${OUTFILE}'" || return 1
 	exec 3> "${OUTFILE}"	# Open output file as file descriptor '3'
     else
 	exec 3>&1		# Copy 'stdout' to file descriptor '3'
