@@ -139,7 +139,12 @@ rtrim ()
 # Trim spaces
 trim ()
 {
-    printf "%s" "$(ltrim "$(rtrim "$*")")"
+    local s="$*"
+    local d=""
+
+    case "${s}" in ( *[[:space:]] ) s="${s%"${s##*[![:space:]]}"}" ;; esac
+    case "${s}" in ( [[:space:]]* ) d="${s%%[![:space:]]*}" ;; esac
+    printf "%s" "${s#"${d}"}"
 }
 
 ####
