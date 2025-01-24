@@ -564,8 +564,10 @@ process_file ()
     LVL=$(( ${LVL:-0} + 1 ))	# LVL (current level) is used for nesting control
     P=0			# P (process) is used as flag for conditional processing
     RET=""		# RET (return) is the string that should be passed to 'up' level
+    # CURLINE (current line) is used as global buffer
     # Read file line by line
-    while IFS= read -r CURLINE ; do	# CURLINE (current line) is used as global buffer
+    # (second condition in 'while' is used when last line doesn't contain '\n')
+    while IFS= read -r CURLINE || test ${#CURLINE} -ne 0 ; do
 	LN=$(( LN + 1 ))
 	process_line || err "in file '${if:-<stdin>}':${LN}" || return 1
     done
