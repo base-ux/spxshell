@@ -264,6 +264,282 @@ is_defined ()
 
 ####
 
+#
+# The process of parsing of the expressions:
+# - eval_expr() function calls parse() function
+# - parse() function builds parse tree:
+#   - get next token calling gettoken()
+#   - check combination of tokens for errors
+#   - add token to appropriate location in the parse tree
+# - if there are no errors from parse() eval_expr() calls evaluate()
+# - evaluate() recursively go through the parse tree and get the final result
+#
+# As POSIX shell does not support arrays and data structures
+# parse tree is presented as a set of variables TX<i>
+# where X is 'field' of 'data structure' (T - type, V - value,
+# L - pointer to the left leaf, R - pointer to the right leaf)
+# and <i> is decimal index of 'array'.
+#
+# The syntax of the expressions in EBNF as follows:
+#
+# expr		= { ws }, expr1, { ws } ;
+# expr1		= term | nested-expr | bang-expr | def-expr | op-expr ;
+# nested-expr	= '(', expr, ')' ;
+# bang-expr	= '!', { ws }, expr1 - op-expr ;
+# op-expr	= expr, op, expr ;
+# def-expr	= "defined", ws, { ws }, varname
+#		| "defined", { ws }, '(', { ws }, varname, { ws }, ')' ;
+# term		= integer | string | varname ;
+# integer	= [ sign ], digit, { digit } ;
+# string	= quote, { chars }, quote ;
+# chars		= bs-quote | char, { char } ;
+# varname	= ( '_', vchar | letter ), { vchar } ;
+# vchar		= letter | digit ;
+# char		= print - quote ;
+# op		= '==' | '!=' | '<=' | '>=' | '<' | '>' | '&&' | '||' ;
+# ws		= ' ' | '\t' ;
+# sign		= '+' | '-' ;
+# bs-quote	= '\"' ;
+# quote		= '"' ;
+# letter	= ? [:alpha:] ? ;
+# print		= ? [:print:] ? ;
+# digit		= ? [:digit:] ? ;
+#
+# Types of tokens classified by gettoken() function:
+#
+# - Terminals:
+#   'N': decimal number with of without sign
+#   'S': literal string
+#   'V': variable name
+# - Operators:
+#   'A': logical AND
+#   'B': logical NOT
+#   'C': comparison
+#   'D': check if variable is defined
+#   'O': logical OR
+# - Grouping:
+#   'l': left parentheses
+#   'r': right parentheses
+# - Errors:
+#   'EU': unterminated string
+#   'EG': general error
+#
+
+# Get and classify next token from expression
+gettoken ()
+{
+    local s="$(ltrim "$1")"
+    local r=""
+
+    case "${s}" in
+	( '' ) ;;
+	( '=='* | '!='* | '<='* | '>='* ) r="C:${s%%"${s#??}"}" ;;
+	( '<'* | '>'* )			  r="C:${s%%"${s#?}"}"  ;;
+	( '('*  ) r="l:${s%%"${s#?}"}"  ;;
+	( ')'*  ) r="r:${s%%"${s#?}"}"  ;;
+	( '!'*  ) r="B:${s%%"${s#?}"}"  ;;
+	( '&&'* ) r="A:${s%%"${s#??}"}" ;;
+	( '||'* ) r="O:${s%%"${s#??}"}" ;;
+	( [+-][[:digit:]]* | [[:digit:]]* )
+	    r="${s%%"${s#[+-]}"}" ; s="${s#"${r}"}" ; r="N:${r}${s%%[![:digit:]]*}" ;;
+	( 'defined' | 'defined'[![:alnum:]_]* ) r="D:defined" ;;
+	( [[:alnum:]_]* ) r="V:${s%%[![:alnum:]_]*}" ;;
+	( '"'* )
+	    s="${s#\"}"			# Remove first quote
+	    # Check for quoted 'quote' (\")
+	    while
+		case "${s%%\"*}" in	# Check symbols before next 'quote'
+		    ( *\\\\ ) false ;;	# Skip two backslash symbols (\\)
+		    ( *\\ )   true  ;;	# Backslash immediately before 'quote'
+		    ( * )     false ;;	# No backslash symbols
+		esac
+	    do
+		# Add to 'r' all characters until '\"' and remove them from 's'
+		r="${r}${s%%\\\"*}\\\"" ; s="${s#*\\\"}"
+	    done
+	    case "${s}" in
+		( *\"* ) r="S:${r}${s%%\"*}" ;;	# Add characters up to closing 'quote'
+		( * )    r="EU:\"${r}${s}"   ;;	# Unterminated string
+	    esac ;;
+	( * ) r="EG:${s}" ;;	# General parsing error
+    esac
+    printf "%s" "${r}"
+}
+
+# Parse expression and build parse tree
+parse ()
+{
+    # 'expr' contains the remainder of expression, 'tok' - next token
+    local expr="$(trim "$1")"
+    local tok=""
+    # Pointers to tree nodes: (c)urrent, (r)oot, (l)ast
+    local c=0   ; local r=0   ; local l=0
+    # Type of tokens: (c)urrent, (p)revious, (r)oot, (l)ast
+    local ct="" ; local pt="" ; local rt="" ; local lt=""
+    # Values of tokens: (c)urrent, (p)revious
+    local cv="" ; local pv=""
+    # Stack of '<rt>:<r>;<lt>:<l>' pairs
+    local s=""
+
+    while test -n "${expr}" && tok="$(gettoken "${expr}")" ; do
+	c=$(( c + 1 ))				# Next 'index' in the 'array'
+	# Save previous token info and get current
+	pv="${cv}" ; cv="${tok#*:}"
+	pt="${ct}" ; ct="${tok%%":${cv}"}"
+	# Check for general errors and cut current token from 'expr'
+	case "${ct}" in
+	    ( 'EG' ) err "parse error at '${cv}'" ;;
+	    ( 'EU' ) err "unterminated string: '${cv}'" ;;
+	    ( S  ) expr="${expr#*"\"${cv}\""}" ;;
+	    ( *  ) expr="${expr#*"${cv}"}" ;;
+	esac || return 1
+
+	# Check for errors
+	case "${pt}${ct}" in
+	    ( [NSVr][NSVBDl] ) err "missing operator before token '${cv}'" ;;
+	    ( [ACO] | l[ACO] ) err "no left operand for '${cv}'" ;;
+	    ( [ABCDO][ACOr] ) err "no right operand for '${pv}'" ;;
+	    ( D[!Vl] ) err "'${pv}' requires variable" ;;
+	    ( lr ) err "missing expression in '()'" ;;
+	    ( *r ) test ${#s} -ne 0 || err "missing '('" ;;
+	    ( *V ) check_vname "${cv}" ;;
+	esac || return 1
+
+	# Check for nesting
+	# For nesting we build 'sub-tree' and link it to the 'upper' tree
+	case "${ct}" in
+	    ( 'l' )
+		# Save current root/last info in the stack and reset both
+		s="${s}|${rt}:${r};${lt}:${l}" ; r=0 ; l=0 ; rt="" ; lt=""
+		continue ;;
+	    ( 'r' )
+		# Restore 'last' info from the stack
+		lt="${s##*;}" ; l="${lt#*:}" ; lt="${lt%:*}"
+		# If 'last' is 'empty' (as saved 'root' obviously)
+		# then nested 'root' acctually will be current 'root'
+		test ${l} -ne 0 &&
+		{
+		    case "${lt}${rt}" in
+			( D[!V] ) err "'defined' requires variable" || return 1 ;;
+		    esac
+		    eval "TR${l}=${r}"	# Link nested 'root' to the right of restored 'last'
+		    # Restore 'root' info from the stack and reset 'last'
+		    rt="${s##*|}" ; rt="${rt%;*}"
+		    r="${rt#*:}" ; rt="${rt%:*}" ; l=0 ; lt=""
+		}
+		s="${s%|*}"	# Drop the last entry from the stack
+		continue ;;
+	esac
+
+	# Create 'tree' node
+	eval "TV${c}=\"\${cv}\" ; TT${c}=\"\${ct}\" ; TL${c}=0 ; TR${c}=0"
+
+	# Link 'current' node to the 'tree':
+	# - 'terminal' and 'unary' - to the right of 'last'
+	# - 'higher' priority operation - insert to the right of 'root'
+	# - 'lower' or 'equal' priority - become new 'root'
+	case "${rt}${ct}" in
+	    ( ?[NSVBD]      ) eval "TR${l}=${c}" ;;
+	    ( OA    | [AO]C ) eval "TL${c}=\${TR${r}} ; TR${r}=${c}" ;;
+	    ( [!O]A | ?[CO] ) eval "TL${c}=${r}" ; r=${c} ; rt="${ct}" ;;
+	esac
+	test ${r} -eq 0 && { r=${c} ; rt="${ct}" ; }	# If first 'root' node
+	l=${c} ; lt="${ct}"	# 'current' becomes 'last'
+    done
+    # Final check for errors
+    case "${ct}" in
+	( [ABCDO] ) err "no right operand for '${cv}'" ;;
+	( * ) test ${#s} -eq 0 || err "missing ')'" ;;
+    esac || return 1
+    R=${r}	# Pass 'root' node number to the upper function
+}
+
+# Check if argument is decimal number
+is_num ()
+{
+    case "${1#[+-]}" in
+	( '' | [![:digit:]]* | [[:digit:]]*[![:digit:]]* ) return 1 ;;
+    esac
+}
+
+# Evaluate expression by following parse tree
+evaluate ()
+{
+    local n="$1"
+    local t="" ; local v="" ; local l=0 ; local r=0
+    local res1="" ; local res2="" ; local ret=""
+    local op=""
+
+    # Get 'tree' node info
+    eval "t=\"\${TT${n}}\" ; v=\"\${TV${n}}\" ; l=\${TL${n}} ; r=\${TR${n}}"
+
+    case "${t}" in
+	( [NS] ) ret="${v}" ;;			# Number and string are 'terminals'
+	( V ) eval "ret=\"\${V_${v}}\"" ;;	# Variable is also 'terminal'
+	( B )
+	    # '!' unary
+	    res2="$(evaluate ${r})" ; test -n "${res2}" || res2=0
+	    is_num "${res2}" && test ${res2} -eq 0 && ret=1 || ret=0
+	    ;;
+	( D )
+	    # 'defined' unary
+	    eval "res2=\"\${TV${r}}\""
+	    is_defined "${res2}" && ret=1 || ret=0
+	    ;;
+	( [AO] )
+	    # '&&' and '||' logical operators evaluate the second operand
+	    # only if the first operand is not enough for result
+	    case "${t}" in ( A ) op="-ne" ;; ( O ) op="-eq" ;; esac
+	    res1="$(evaluate ${l})" ; test -n "${res1}" || res1=0
+	    is_num "${res1}" && test ${res1} -eq 0 && ret=0 || ret=1
+	    if eval "test ${ret} ${op} 0" ; then
+		res2="$(evaluate ${r})" ; test -n "${res2}" || res2=0
+		is_num "${res2}" && test ${res2} -eq 0 && ret=0 || ret=1
+	    fi
+	    ;;
+	( C )
+	    # 'Compare' operators evaluate both operands
+	    res1="$(evaluate ${l})" ; res2="$(evaluate ${r})"
+	    is_num "${res1}" && is_num "${res2}" &&
+	    {
+		case "${v}" in
+		    ( '==' ) op="-eq" ;;
+		    ( '!=' ) op="-ne" ;;
+		    ( '>'  ) op="-gt" ;;
+		    ( '<'  ) op="-lt" ;;
+		    ( '>=' ) op="-ge" ;;
+		    ( '<=' ) op="-le" ;;
+		esac
+		eval "test ${res1} ${op} ${res2}" && ret=1 || ret=0
+	    } ||
+	    {
+		case "${v}" in
+		    ( '==' ) test "${res1}" = "${res2}"  ;;
+		    ( '!=' ) test "${res1}" != "${res2}" ;;
+		    ( '>'  ) test "${res1}" \> "${res2}" ;;
+		    ( '<'  ) test "${res1}" \< "${res2}" ;;
+		    ( '>=' ) test "${res1}" = "${res2}" || test "${res1}" \> "${res2}" ;;
+		    ( '<=' ) test "${res1}" = "${res2}" || test "${res1}" \< "${res2}" ;;
+		esac && ret=1 || ret=0
+	    }
+	    ;;
+    esac
+
+    # Return the result
+    printf "%s" "${ret}"
+}
+
+# Expression evaluation (in subshell)
+eval_expr ()
+(
+    R=0		# Set 'global' variable for 'root' of the 'tree'
+    parse "$*" || return 1
+    test ${R} -eq 0 ||	# If R is zero then just return empty string (false)
+    evaluate ${R}	# otherwise return evaluated value of the expression
+)
+
+####
+
 # Search include file
 search_inc ()
 {
@@ -344,6 +620,21 @@ do_undef ()
     eval_ret "$(undef_var "${var}")"
 }
 
+# Process 'if' directive
+do_if ()
+{
+    local expr="$1"
+    local r=""
+
+    IFLVL=$(( IFLVL + 1 ))
+    if test $P -eq 0 ; then
+	test -n "${expr}" || err "no parameters set for 'if' directive" || return 1
+	r="$(eval_expr "${expr}")" || return 1
+	case "${r}" in ( '' | '0' ) P=-${IFLVL} ;; ( * ) P=0 ;; esac
+    fi
+    IFSTACK="${IFSTACK}|if:${LN}"
+}
+
 # Process 'ifdef' directive
 do_ifdef ()
 {
@@ -370,6 +661,30 @@ do_ifndef ()
 	is_defined "${var}" && P=-${IFLVL} || P=0
     fi
     IFSTACK="${IFSTACK}|ifndef:${LN}"
+}
+
+# Process 'elif' directive
+do_elif ()
+{
+    local expr="$1"
+    local r=""
+
+    case "$P" in
+	( 0 | ${IFLVL} | -${IFLVL} )
+	    case "${IFSTACK##*|}" in
+		( '' ) err "'elif' without 'if'" ;;
+		( "else"* ) err "'elif' after 'else'" ;;
+	    esac || return 1
+	    test -n "${expr}" || err "no parameters set for 'elif' directive" || return 1
+	    case "$P" in
+		( 0 ) P=${IFLVL} ;;
+		( -${IFLVL} )
+		    r="$(eval_expr "${expr}")" || return 1
+		    case "${r}" in ( '' | '0' ) ;; ( * ) P=0 ;; esac
+		    ;;
+	    esac ;;
+    esac
+    IFSTACK="${IFSTACK%|*}|elif:${LN}"
 }
 
 # Process 'elifdef' directive
@@ -465,7 +780,7 @@ do_directive ()
 
     case "${d}" in
 	( '' | '#'* ) return 0 ;;	# Skip empty directives and comments
-	( "ifdef" | "ifndef" | "elifdef" | "elifndef" | "else" | "endif" ) ;;
+	( "if" | "ifdef" | "ifndef" | "elif" | "elifdef" | "elifndef" | "else" | "endif" ) ;;
 	( "define" | "error" | "include" | "undef" ) test $P -eq 0 || return 0 ;;
 	( * ) test $P -ne 0 && return 0 || err "unknown directive '${d}'" || return 1 ;;
     esac
