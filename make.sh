@@ -2,7 +2,7 @@
 
 # Set variables
 PRODUCT="spxshell"
-VERSION="0.14.6"
+VERSION="0.15.0"
 
 PROG="$(basename -- "$0")"
 
@@ -41,6 +41,7 @@ mkdeploy.sht
 mkhlist.sht
 nmon-cleanup.sht
 nmon-collect.sht
+presh.sht
 sysexec.sht
 "
 

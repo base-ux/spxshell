@@ -1,5 +1,5 @@
 #%shebang
-#%version 9
+#%version 10
 #
 # Installation script
 #
@@ -25,6 +25,7 @@ mkdeploy.sh
 mkhlist.sh
 nmon-cleanup.sh
 nmon-collect.sh
+presh.sh
 spxgen.sh
 sysexec.sh
 "
