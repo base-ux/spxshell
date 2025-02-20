@@ -699,10 +699,11 @@ do_elifdef ()
 		( "else"* ) err "'elifdef' after 'else'" ;;
 	    esac || return 1
 	    test -n "${var}" || err "no parameters set for 'elifdef' directive" || return 1
-	    check_vname "${var}" || return 1
 	    case "$P" in
 		( 0 ) P=${IFLVL} ;;
-		( -${IFLVL} ) is_defined "${var}" && P=0 ;;
+		( -${IFLVL} )
+		    check_vname "${var}" || return 1
+		    is_defined "${var}" && P=0 ;;
 	    esac ;;
     esac
     IFSTACK="${IFSTACK%|*}|elifdef:${LN}"
@@ -720,10 +721,11 @@ do_elifndef ()
 		( "else"* ) err "'elifndef' after 'else'" ;;
 	    esac || return 1
 	    test -n "${var}" || err "no parameters set for 'elifndef' directive" || return 1
-	    check_vname "${var}" || return 1
 	    case "$P" in
 		( 0 ) P=${IFLVL} ;;
-		( -${IFLVL} ) is_defined "${var}" || P=0 ;;
+		( -${IFLVL} )
+		    check_vname "${var}" || return 1
+		    is_defined "${var}" || P=0 ;;
 	    esac ;;
     esac
     IFSTACK="${IFSTACK%|*}|elifndef:${LN}"
