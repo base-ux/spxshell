@@ -256,6 +256,12 @@ undef_var ()
     printf "unset -v V_%s" "$1"
 }
 
+# Check if variable is defined
+is_defined ()
+{
+    eval "test \"X\" = \"\${V_${1}+X}\""
+}
+
 ####
 
 # Search include file
@@ -347,7 +353,7 @@ do_ifdef ()
     if test $P -eq 0 ; then
 	test -n "${var}" || err "no parameters set for 'ifdef' directive" || return 1
 	check_vname "${var}" || return 1
-	eval "test \"X\" = \"\${V_${var}+X}\"" && P=0 || P=-${IFLVL}
+	is_defined "${var}" && P=0 || P=-${IFLVL}
     fi
     IFSTACK="${IFSTACK}|ifdef:${LN}"
 }
@@ -361,7 +367,7 @@ do_ifndef ()
     if test $P -eq 0 ; then
 	test -n "${var}" || err "no parameters set for 'ifndef' directive" || return 1
 	check_vname "${var}" || return 1
-	eval "test \"X\" = \"\${V_${var}+X}\"" && P=-${IFLVL} || P=0
+	is_defined "${var}" && P=-${IFLVL} || P=0
     fi
     IFSTACK="${IFSTACK}|ifndef:${LN}"
 }
@@ -381,7 +387,7 @@ do_elifdef ()
 	    check_vname "${var}" || return 1
 	    case "$P" in
 		( 0 ) P=${IFLVL} ;;
-		( -${IFLVL} ) eval "test \"X\" = \"\${V_${var}+X}\"" && P=0 ;;
+		( -${IFLVL} ) is_defined "${var}" && P=0 ;;
 	    esac ;;
     esac
     IFSTACK="${IFSTACK%|*}|elifdef:${LN}"
@@ -402,7 +408,7 @@ do_elifndef ()
 	    check_vname "${var}" || return 1
 	    case "$P" in
 		( 0 ) P=${IFLVL} ;;
-		( -${IFLVL} ) eval "test \"X\" = \"\${V_${var}+X}\"" || P=0 ;;
+		( -${IFLVL} ) is_defined "${var}" || P=0 ;;
 	    esac ;;
     esac
     IFSTACK="${IFSTACK%|*}|elifndef:${LN}"
