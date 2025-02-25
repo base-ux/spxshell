@@ -317,16 +317,9 @@ gettoken ()
 	( [[:alnum:]_]* ) r="V:${s%%[![:alnum:]_]*}" ;;
 	( '"'* )
 	    s="${s#\"}"			# Remove first quote
-	    # Check for quoted 'quote' (\")
-	    while
-		case "${s%%\"*}" in	# Check symbols before next 'quote'
-		    ( *\\\\ ) false ;;	# Skip two backslash symbols (\\)
-		    ( *\\ )   true  ;;	# Backslash immediately before 'quote'
-		    ( * )     false ;;	# No backslash symbols
-		esac
-	    do
-		# Add to 'r' all characters until '\"' and remove them from 's'
-		r="${r}${s%%\\\"*}\\\"" ; s="${s#*\\\"}"
+	    # Check for quoted 'quote' (double qoutes)
+	    while ! case "${s}" in ( *'""'* ) false ;; esac ; do
+		r="${r}${s%%'""'*}\"" ; s="${s#*'""'}"
 	    done
 	    case "${s}" in
 		( *\"* ) r="S:${r}${s%%\"*}" ;;	# Add characters up to closing 'quote'
@@ -343,7 +336,7 @@ parse ()
     # 'expr' contains the remainder of expression
     local expr="$1"
     # Pointers to tree nodes: (c)urrent, (r)oot, (l)ast
-    local c=0   ; local r=0   ; local l=0
+    local c=${CN} ; local r=0 ; local l=0
     # Type of tokens: (c)urrent, (p)revious, (r)oot, (l)ast
     local ct="" ; local pt="" ; local rt="" ; local lt=""
     # Values of tokens: (c)urrent, (p)revious
@@ -421,6 +414,7 @@ parse ()
 	( [ABCDO] ) err "no right operand for '${cv}'" ;;
 	( * ) test ${#s} -eq 0 || err "missing ')'" ;;
     esac || return 1
+    CN=${c}	# Save last 'array index'
     R=${r}	# Pass 'root' node number to the upper function
 }
 
@@ -498,11 +492,56 @@ evaluate ()
     XRET="${ret}"	# Pass 'result' to the upper function
 }
 
+# Delete spaces from expression
+del_spaces ()
+{
+    local s="$1"
+    local r=""
+    local e=""
+
+    while ! case "${s}" in ( *[![:space:]]* ) false ;; esac ; do
+	# Trim leading spaces
+	case "${s}" in ( [[:space:]]* ) s="${s#"${s%%[![:space:]]*}"}" ;; esac
+	case "${s}" in
+	    ( '"'* )
+		s="${s#\"}" ; e=""	# Remove first quote
+		# Check for quoted 'quote' (double qoutes)
+		while ! case "${s}" in ( *'""'* ) false ;; esac ; do
+		    e="${e}${s%%'""'*}\"" ; s="${s#*'""'}"
+		done
+		# Add characters up to closing 'quote'
+		# or copy unterminated string
+		case "${s}" in
+		    ( *\"* ) e="\"${e}${s%%\"*}\"" ; s="${s#*\"}" ;;
+		    ( * )    e="\"${e}${s}" ; s="" ;;
+		esac ;;
+	    ( * ) e="${s%%[[:space:]]*}" ; s="${s#"${e}"}" ;;	# Copy until next space
+	esac
+	r="${r}${e}"
+    done
+    EXPR="${r}"		# Pass 'expression' to the upper function
+}
+
 # Expression evaluation
 eval_expr ()
 {
-    R=0		# Set 'global' variable for 'root' of the 'tree'
-    parse "$*" || return 1
+    local expr="$1"
+
+    R=0
+    # Delete spaces from expression
+    del_spaces "${expr}" && expr="${EXPR}" || return 1
+    # Search in the list of expressions
+    case "${XLIST}" in
+	( *"^${expr}:"* )
+	    # If found get 'root' node index
+	    R="${XLIST##*"^${expr}:"}" ; R="${R%%"^"*}"
+	    ;;
+	( * )
+	    # Otherwise parse expression and build parse tree
+	    parse "${expr}" && XLIST="${XLIST}^${expr}:${R}" || return 1
+	    ;;
+    esac
+    # Set the result to zero (false) if needed
     test ${R} -ne 0 && evaluate ${R} || XRET=0
 }
 
@@ -856,6 +895,7 @@ process_file ()
     #  to the 'up' environment (see 'variable visibility scope' for subshells).
     #  This is used for 'define' and 'undef' directives to set or unset
     #  variables in included files and which must be visible at the 'global' level
+    CN=0		# 'Array index' for parse trees
     CURFILE="${if}"	# CURFILE (current file) is used by 'search_inc'
     IFLVL=0		# IFLVL (current 'if' stack level)
     IFSTACK=""		# IFSTACK ('if' stack) is used for nesting 'if...' directives
