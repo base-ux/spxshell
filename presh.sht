@@ -113,37 +113,6 @@ squote ()
     printf "%s" "${e}"
 }
 
-# Trim leading spaces
-ltrim ()
-{
-    local s="$*"
-    local d=""
-
-    case "${s}" in ( [[:space:]]* ) d="${s%%[![:space:]]*}" ;; esac
-    printf "%s" "${s#"${d}"}"
-}
-
-# Trim trailing spaces
-rtrim ()
-{
-    local s="$*"
-    local d=""
-
-    case "${s}" in ( *[[:space:]] ) d="${s##*[![:space:]]}" ;; esac
-    printf "%s" "${s%"${d}"}"
-}
-
-# Trim spaces
-trim ()
-{
-    local s="$*"
-    local d=""
-
-    case "${s}" in ( *[[:space:]] ) s="${s%"${s##*[![:space:]]}"}" ;; esac
-    case "${s}" in ( [[:space:]]* ) d="${s%%[![:space:]]*}" ;; esac
-    printf "%s" "${s#"${d}"}"
-}
-
 ####
 
 # 'readlink' replacement
@@ -328,9 +297,11 @@ is_defined ()
 # Get and classify next token from expression
 gettoken ()
 {
-    local s="$(ltrim "$1")"
+    local s="$1"
     local r=""
 
+    # Trim leading spaces
+    case "${s}" in ( [[:space:]]* ) s="${s#"${s%%[![:space:]]*}"}" ;; esac
     case "${s}" in
 	( '' ) ;;
 	( '=='* | '!='* | '<='* | '>='* ) r="C:${s%%"${s#??}"}" ;;
@@ -363,15 +334,14 @@ gettoken ()
 	    esac ;;
 	( * ) r="EG:${s}" ;;	# General parsing error
     esac
-    printf "%s" "${r}"
+    TOKEN="${r}"	# Pass 'token' to the upper function
 }
 
 # Parse expression and build parse tree
 parse ()
 {
-    # 'expr' contains the remainder of expression, 'tok' - next token
-    local expr="$(trim "$1")"
-    local tok=""
+    # 'expr' contains the remainder of expression
+    local expr="$1"
     # Pointers to tree nodes: (c)urrent, (r)oot, (l)ast
     local c=0   ; local r=0   ; local l=0
     # Type of tokens: (c)urrent, (p)revious, (r)oot, (l)ast
@@ -381,11 +351,11 @@ parse ()
     # Stack of '<rt>:<r>;<lt>:<l>' pairs
     local s=""
 
-    while test -n "${expr}" && tok="$(gettoken "${expr}")" ; do
+    while test -n "${expr}" && gettoken "${expr}" ; do
 	c=$(( c + 1 ))				# Next 'index' in the 'array'
 	# Save previous token info and get current
-	pv="${cv}" ; cv="${tok#*:}"
-	pt="${ct}" ; ct="${tok%%":${cv}"}"
+	pv="${cv}" ; cv="${TOKEN#*:}"
+	pt="${ct}" ; ct="${TOKEN%%":${cv}"}"
 	# Check for general errors and cut current token from 'expr'
 	case "${ct}" in
 	    ( 'EG' ) err "parse error at '${cv}'" ;;
@@ -478,7 +448,7 @@ evaluate ()
 	( V ) eval "ret=\"\${V_${v}}\"" ;;	# Variable is also 'terminal'
 	( B )
 	    # '!' unary
-	    res2="$(evaluate ${r})" ; test -n "${res2}" || res2=0
+	    evaluate ${r} ; res2="${XRET}" ; test -n "${res2}" || res2=0
 	    is_num "${res2}" && test ${res2} -eq 0 && ret=1 || ret=0
 	    ;;
 	( D )
@@ -490,16 +460,17 @@ evaluate ()
 	    # '&&' and '||' logical operators evaluate the second operand
 	    # only if the first operand is not enough for result
 	    case "${t}" in ( A ) op="-ne" ;; ( O ) op="-eq" ;; esac
-	    res1="$(evaluate ${l})" ; test -n "${res1}" || res1=0
+	    evaluate ${l} ; res1="${XRET}" ; test -n "${res1}" || res1=0
 	    is_num "${res1}" && test ${res1} -eq 0 && ret=0 || ret=1
 	    if eval "test ${ret} ${op} 0" ; then
-		res2="$(evaluate ${r})" ; test -n "${res2}" || res2=0
+		evaluate ${r} ; res2="${XRET}" ; test -n "${res2}" || res2=0
 		is_num "${res2}" && test ${res2} -eq 0 && ret=0 || ret=1
 	    fi
 	    ;;
 	( C )
 	    # 'Compare' operators evaluate both operands
-	    res1="$(evaluate ${l})" ; res2="$(evaluate ${r})"
+	    evaluate ${l} ; res1="${XRET}"
+	    evaluate ${r} ; res2="${XRET}"
 	    is_num "${res1}" && is_num "${res2}" &&
 	    {
 		case "${v}" in
@@ -524,19 +495,16 @@ evaluate ()
 	    }
 	    ;;
     esac
-
-    # Return the result
-    printf "%s" "${ret}"
+    XRET="${ret}"	# Pass 'result' to the upper function
 }
 
-# Expression evaluation (in subshell)
+# Expression evaluation
 eval_expr ()
-(
+{
     R=0		# Set 'global' variable for 'root' of the 'tree'
     parse "$*" || return 1
-    test ${R} -eq 0 ||	# If R is zero then just return empty string (false)
-    evaluate ${R}	# otherwise return evaluated value of the expression
-)
+    test ${R} -ne 0 && evaluate ${R} || XRET=0
+}
 
 ####
 
@@ -585,10 +553,12 @@ do_define ()
 {
     local args="$1"
     local var="${args%%[[:space:]]*}"		# Get variable name
-    local val="$(ltrim "${args#"${var}"}")"	# Get variable value
+    local val="${args#"${var}"}"		# Get variable value
 
     test -n "${var}" || err "no parameters set for 'define' directive" || return 1
     check_vname "${var}" || return 1
+    # Trim leading spaces
+    case "${val}" in ( [[:space:]]* ) val="${val#"${val%%[![:space:]]*}"}" ;; esac
     test -n "${val}" || val="1"		# Default value
     case "${val}" in ( \"*\" ) val="${val#\"}" ; val="${val%\"}" ;; esac	# Remove quotes
     eval_ret "$(def_var "${var}" "${val}")"
@@ -601,8 +571,8 @@ do_include ()
     local ret=""
 
     case "${f}" in
-	( \"*\" ) f="${f#\"}" ; f="${f%\"}" ;;			# Remove quotes
-	( * ) f="$(expand "${LM}${f}${RM}")" || return 1 ;;	# Try to expand variable
+	( \"*\" ) f="${f#\"}" ; f="${f%\"}" ;;				# Remove quotes
+	( * ) expand "${LM}${f}${RM}" && f="${VEXP}" || return 1 ;;	# Try to expand variable
     esac
     test -n "${f}" || err "empty filename set for 'include' directive" || return 1
     f="$(search_inc "${f}")" || return 1
@@ -624,13 +594,12 @@ do_undef ()
 do_if ()
 {
     local expr="$1"
-    local r=""
 
     IFLVL=$(( IFLVL + 1 ))
     if test $P -eq 0 ; then
 	test -n "${expr}" || err "no parameters set for 'if' directive" || return 1
-	r="$(eval_expr "${expr}")" || return 1
-	case "${r}" in ( '' | '0' ) P=-${IFLVL} ;; ( * ) P=0 ;; esac
+	eval_expr "${expr}" || return 1
+	case "${XRET}" in ( '' | '0' ) P=-${IFLVL} ;; ( * ) P=0 ;; esac
     fi
     IFSTACK="${IFSTACK}|if:${LN}"
 }
@@ -667,7 +636,6 @@ do_ifndef ()
 do_elif ()
 {
     local expr="$1"
-    local r=""
 
     case "$P" in
 	( 0 | ${IFLVL} | -${IFLVL} )
@@ -679,8 +647,8 @@ do_elif ()
 	    case "$P" in
 		( 0 ) P=${IFLVL} ;;
 		( -${IFLVL} )
-		    r="$(eval_expr "${expr}")" || return 1
-		    case "${r}" in ( '' | '0' ) ;; ( * ) P=0 ;; esac
+		    eval_expr "${expr}" || return 1
+		    case "${XRET}" in ( '' | '0' ) ;; ( * ) P=0 ;; esac
 		    ;;
 	    esac ;;
     esac
@@ -776,9 +744,13 @@ do_error ()
 # Examine directive and call handler
 do_directive ()
 {
-    local s="$(trim "${CURLINE#"${MAGIC}"}")"	# Cut 'magic' and trim spaces
-    local d="${s%%[[:space:]]*}"		# Get directive
-    local args="$(ltrim "${s#"${d}"}")"		# Get arguments
+    local s="${CURLINE#"${MAGIC}"}"	# Cut 'magic'
+    local d=""				# Directive
+    local a=""				# Arguments
+
+    # Trim leading spaces and get directive
+    case "${s}" in ( [[:space:]]* ) s="${s#"${s%%[![:space:]]*}"}" ;; esac
+    d="${s%%[[:space:]]*}"
 
     case "${d}" in
 	( '' | '#'* ) return 0 ;;	# Skip empty directives and comments
@@ -786,7 +758,13 @@ do_directive ()
 	( "define" | "error" | "include" | "undef" ) test $P -eq 0 || return 0 ;;
 	( * ) test $P -ne 0 && return 0 || err "unknown directive '${d}'" || return 1 ;;
     esac
-    do_${d} "${args}"
+
+    # Get arguments and trim spaces
+    a="${s#"${d}"}"
+    case "${a}" in ( [[:space:]]* ) a="${a#"${a%%[![:space:]]*}"}" ;; esac
+    case "${a}" in ( *[[:space:]] ) a="${a%"${a##*[![:space:]]}"}" ;; esac
+    # Call handler
+    do_${d} "${a}"
 }
 
 # Expand variables
@@ -810,29 +788,27 @@ expand ()
 		VS="${VS}|${v}"		&&		# Add to 'var stack'
 		eval "u=\"\${V_${v}}\""	&&		# Expand variable to value
 		case "${u}" in
-		    ( *"${LM}"*"${RM}"* ) u="$(expand "${u}")" ;;	# Recursively expand value
+		    ( *"${LM}"*"${RM}"* ) expand "${u}" && u="${VEXP}" ;;	# Recursively expand value
 		esac			&&
 		VS="${VS%"|${v}"}"	&&		# Remove from 'var stack'
 		case "${t}" in
-		    ( *"${LM}"*"${RM}"* ) t="$(expand "${t}")" ;;	# Expand 'tail'
+		    ( *"${LM}"*"${RM}"* ) expand "${t}" && t="${VEXP}" ;;	# Expand 'tail'
 		esac
 	    } || return 1
 	    s="${h}${u}${t}"		# Construct expanded string
 	    ;;
     esac
-    printf "%s" "${s}"
+    VEXP="${s}"
 }
 
 # Output current line
 output_line ()
 {
-    local s=""
-
     case "${CURLINE}" in
 	( *"${LM}"*"${RM}"* )
-	    s="$(expand "${CURLINE}")" && printf "%s\n" "${s}" >&3 || return 1 ;;
-	( * ) printf "%s\n" "${CURLINE}" >&3 ;;
+	    expand "${CURLINE}" && CURLINE="${VEXP}" || return 1 ;;
     esac
+    printf "%s\n" "${CURLINE}" >&3
 }
 
 # Process line
